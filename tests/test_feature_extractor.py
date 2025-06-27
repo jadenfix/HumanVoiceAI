@@ -44,7 +44,13 @@ def setup_test_audio():
 @pytest.fixture
 def feature_extractor():
     """Create a feature extractor instance for testing."""
-    return FeatureExtractor(sample_rate=16000, n_mels=80, n_fft=1024, hop_length=160).to(DEVICE)
+    return FeatureExtractor(
+        sample_rate=16000,
+        n_mels=80,
+        n_fft=1024,
+        hop_length=160,
+        device=DEVICE
+    )
 
 def test_feature_extractor_init(feature_extractor):
     """Test that the feature extractor initializes correctly."""
@@ -63,17 +69,41 @@ def test_extract_features_from_waveform(feature_extractor, setup_test_audio):
     if len(waveform.shape) == 1:
         waveform = waveform.unsqueeze(0)  # Add channel dimension if needed
     
+    # Print debug info
+    n_fft = feature_extractor.n_fft
+    hop_length = feature_extractor.hop_length
+    win_length = feature_extractor.win_length
+    print(f"\nTest Configuration:")
+    print(f"- Sample rate: {sample_rate}")
+    print(f"- n_fft: {n_fft}")
+    print(f"- hop_length: {hop_length}")
+    print(f"- win_length: {win_length}")
+    print(f"- Waveform length: {waveform.shape[-1]} samples")
+    
     # Extract features
     features = feature_extractor.extract_from_waveform(waveform, sample_rate)
+    
+    # Print actual output shape
+    print(f"\nOutput shape: {features.shape}")
     
     # Move to CPU for assertions if needed
     if str(DEVICE) != 'cpu':
         features = features.cpu()
     features = features.detach().numpy()
     
+    # Calculate expected frames with center padding
+    n_samples = waveform.shape[-1]
+    pad = n_fft // 2
+    expected_frames = ((n_samples + 2*pad - n_fft) // hop_length) + 1
+    
+    print(f"\nExpected frames calculation:")
+    print(f"- Input samples: {n_samples}")
+    print(f"- Padding (n_fft//2): {pad}")
+    print(f"- Padded length: {n_samples + 2*pad}")
+    print(f"- Expected frames: (({n_samples} + 2*{pad} - {n_fft}) // {hop_length}) + 1 = {expected_frames}")
+    
     # Check the shape of the output
-    expected_time_steps = (16000 * 1) // 160  # 1 second of audio with hop_length=160
-    assert features.shape == (expected_time_steps, 82), f"Expected shape {(expected_time_steps, 82)}, got {features.shape}"
+    assert features.shape == (expected_frames, 82), f"Expected shape {(expected_frames, 82)}, got {features.shape}"
     
     # Check that features are finite
     assert np.isfinite(features).all(), "Features contain NaN or infinite values"
@@ -82,6 +112,21 @@ def test_extract_features_from_file(feature_extractor, setup_test_audio):
     """Test feature extraction from an audio file."""
     audio_path = setup_test_audio
     
+    # Load audio to get actual length
+    import soundfile as sf
+    waveform, sample_rate = sf.read(audio_path)
+    waveform = torch.from_numpy(waveform).float().to(DEVICE)
+    if len(waveform.shape) == 1:
+        waveform = waveform.unsqueeze(0)  # Add channel dimension if needed
+            
+    # Calculate expected frames with center padding
+    n_samples = waveform.shape[-1]
+    n_fft = feature_extractor.n_fft
+    hop_length = feature_extractor.hop_length
+    win_length = feature_extractor.win_length
+    pad = n_fft // 2
+    expected_frames = ((n_samples + 2*pad - win_length) // hop_length) + 1
+        
     # Extract features
     features = feature_extractor.extract(audio_path)
     
@@ -91,8 +136,7 @@ def test_extract_features_from_file(feature_extractor, setup_test_audio):
     features = features.detach().numpy()
     
     # Check the shape of the output
-    expected_time_steps = (16000 * 1) // 160  # 1 second of audio with hop_length=160
-    assert features.shape == (expected_time_steps, 82), f"Expected shape {(expected_time_steps, 82)}, got {features.shape}"
+    assert features.shape == (expected_frames, 82), f"Expected shape {(expected_frames, 82)}, got {features.shape}"
     
     # Check that features are finite
     assert np.isfinite(features).all(), "Features contain NaN or infinite values"
