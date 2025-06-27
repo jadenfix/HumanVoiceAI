@@ -1,0 +1,85 @@
+# SER Model Configuration
+model:
+  name: "SERModel"
+  input_dim: 80  # Number of mel-frequency bins
+  hidden_dim: 256  # Hidden dimension size
+  num_layers: 4  # Number of LSTM layers
+  num_emotions: 8  # Number of emotion classes
+  bidirectional: True  # Use bidirectional LSTM
+  dropout: 0.2  # Dropout probability
+  use_attention: True  # Use attention mechanism
+  attention_dim: 128  # Attention dimension
+
+# Audio processing configuration
+audio:
+  sample_rate: 22050  # Target sample rate
+  n_fft: 1024  # FFT window size
+  hop_length: 512  # Hop length between STFT windows
+  win_length: 1024  # Window length
+  n_mels: 80  # Number of mel filterbanks
+  f_min: 0.0  # Minimum frequency
+  f_max: 8000.0  # Maximum frequency
+  power: 2.0  # Exponent for the magnitude spectrogram
+  pad_mode: "reflect"  # Padding mode
+  norm: "slaney"  # Normalization mode
+  mel_scale: "htk"  # Mel scale type
+
+# Training configuration
+training:
+  num_epochs: 100  # Number of training epochs
+  batch_size: 32  # Batch size
+  learning_rate: 1e-4  # Learning rate
+  weight_decay: 1e-5  # Weight decay
+  num_workers: 4  # Number of data loading workers
+  clip_grad: 5.0  # Gradient clipping value
+  use_class_weights: True  # Use class weights for imbalanced data
+  
+  # Learning rate scheduler configuration
+  scheduler:
+    type: "reduce_on_plateau"  # One of: reduce_on_plateau, step, cosine, None
+    factor: 0.5  # Factor for reducing learning rate
+    patience: 5  # Patience for plateau scheduler
+    step_size: 30  # Step size for step scheduler
+    gamma: 0.1  # Multiplicative factor for step scheduler
+    t_max: 100  # T_max for cosine scheduler
+    eta_min: 1e-6  # Minimum learning rate
+
+# Data configuration
+data:
+  max_duration: 10.0  # Maximum audio duration in seconds
+  min_duration: 0.5  # Minimum audio duration in seconds
+  target_sample_rate: 22050  # Target sample rate
+  augment: True  # Enable data augmentation
+  
+  # Data augmentation parameters
+  augmentation:
+    time_stretch: 0.3  # Probability of applying time stretch
+    pitch_shift: 0.3  # Probability of applying pitch shift
+    noise: 0.2  # Probability of adding noise
+    max_time_stretch: 0.2  # Maximum time stretch factor
+    max_pitch_shift: 2  # Maximum pitch shift in semitones
+    noise_level: 0.01  # Maximum noise level
+
+# Logging and checkpointing
+logging:
+  log_dir: "logs"  # Directory for saving logs
+  checkpoint_dir: "checkpoints"  # Directory for saving checkpoints
+  save_interval: 1  # Save checkpoint every N epochs
+  log_interval: 10  # Log training progress every N batches
+  use_tensorboard: True  # Enable TensorBoard logging
+  
+# Evaluation
+evaluation:
+  metrics: ["accuracy", "precision", "recall", "f1"]  # Metrics to compute
+  average: "weighted"  # Averaging strategy for multi-class metrics
+  
+# Emotion labels
+emotions:
+  - "neutral"
+  - "happy"
+  - "sad"
+  - "angry"
+  - "fear"
+  - "disgust"
+  - "surprise"
+  - "calm"

@@ -1,0 +1,105 @@
+# Application Configuration
+app:
+  name: "Emotion-Aware Voice Agent"
+  version: "1.0.0"
+  description: "Real-time emotion detection and response generation"
+  author: "Jaden Fix"
+  email: "jadenfix123@gmail.com"
+  github: "https://github.com/jadenfix/HumanVoiceAI"
+  linkedin: "https://linkedin.com/in/jadenfix"
+
+# Audio Configuration
+audio:
+  sample_rate: 16000  # Hz
+  channels: 1  # Mono
+  chunk_size: 1600  # 100ms at 16kHz
+  format: "int16"
+  device: null  # Use default audio device
+  silence_threshold: 0.01  # Minimum audio energy for VAD
+  silence_duration: 2.0  # seconds of silence before stopping
+
+# Model Configuration
+model:
+  # SER Model
+  ser:
+    input_dim: 80  # Number of MFCC coefficients
+    hidden_dim: 256
+    num_layers: 3
+    num_emotions: 8
+    dropout: 0.2
+    use_attention: true
+    
+  # RL Policy
+  rl_policy:
+    state_dim: 8  # Same as num_emotions
+    action_dim: 5  # Number of possible actions
+    hidden_dim: 128
+    gamma: 0.99
+    epsilon: 1.0
+    epsilon_min: 0.01
+    epsilon_decay: 0.995
+    batch_size: 64
+    buffer_size: 10000
+    target_update: 10
+
+# Feature Extraction
+features:
+  # MFCC parameters
+  n_mfcc: 80
+  n_fft: 512
+  hop_length: 160
+  win_length: 400
+  fmin: 20
+  fmax: 8000
+  
+  # Normalization
+  normalize: true
+  mean_norm: true
+  std_norm: true
+
+# UI Configuration
+ui:
+  theme: "light"  # or "dark"
+  update_interval: 0.1  # seconds
+  max_history: 100  # Number of samples to keep in history
+  plot_refresh_rate: 0.5  # seconds
+
+# Logging
+logging:
+  level: "INFO"  # DEBUG, INFO, WARNING, ERROR, CRITICAL
+  file: "logs/app.log"
+  max_bytes: 10485760  # 10MB
+  backup_count: 5
+
+# Paths
+paths:
+  models: "models/"
+  data: "data/"
+  logs: "logs/"
+  checkpoints: "checkpoints/"
+
+# Emotion Classes
+emotions:
+  - "neutral"
+  - "happy"
+  - "sad"
+  - "angry"
+  - "fear"
+  - "disgust"
+  - "surprise"
+  - "calm"
+
+# Action Mappings
+actions:
+  0: "Neutral Response"
+  1: "Empathetic Response"
+  2: "Question"
+  3: "Summary"
+  4: "Change Topic"
+
+# Debug Settings
+debug:
+  enable: false
+  log_audio: false
+  log_features: false
+  log_predictions: false
