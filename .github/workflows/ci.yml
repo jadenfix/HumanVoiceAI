@@ -11,7 +11,7 @@ on:
 
 jobs:
   test:
-    name: Test with Python ${{ matrix.python-version }}
+    name: Test with Python ${{ matrix.python-version }} on ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
     
     strategy:
@@ -38,24 +38,22 @@ jobs:
         sudo apt-get update
         sudo apt-get install -y portaudio19-dev python3-pyaudio
     
-    - name: Install Python dependencies (macOS)
+    - name: Install system dependencies (macOS)
       if: matrix.os == 'macos-latest'
       run: |
-        # On macOS, we'll skip pyaudio installation for now as it's not critical
-        python -m pip install --upgrade pip
-        # Install all dependencies except pyaudio
-        pip install -e '.[dev]' --no-deps
-        # Create a temporary requirements file without pyaudio
-        grep -v 'pyaudio' requirements.txt > /tmp/requirements_no_pyaudio.txt
-        pip install -r /tmp/requirements_no_pyaudio.txt
-        # Set an environment variable to indicate pyaudio is not available
-        echo "PYAUDIO_AVAILABLE=False" >> $GITHUB_ENV
-    
-    - name: Install Python dependencies (Linux)
-      if: matrix.os == 'ubuntu-latest'
+        brew update
+        brew install portaudio
+        
+    - name: Install Python dependencies
       run: |
         python -m pip install --upgrade pip
         pip install -e .[dev]
+        
+    - name: Verify Python environment
+      run: |
+        python --version
+        pip --version
+        pip list
         
     - name: Run linters
       run: |
@@ -83,7 +81,7 @@ jobs:
     steps:
     - uses: actions/checkout@v3
     
-    - name: Set up Python
+    - name: Set up Python 3.11
       uses: actions/setup-python@v4
       with:
         python-version: '3.11'
