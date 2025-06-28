@@ -8,10 +8,10 @@ from .agent import PolicyNetwork, PPOTrainer, ReplayBuffer, Transition
 from .environment import VoiceAIEnvironment, VoiceAIState
 
 __all__ = [
-    'PolicyNetwork',
-    'PPOTrainer',
-    'ReplayBuffer',
-    'Transition',
-    'VoiceAIEnvironment',
-    'VoiceAIState'
+    "PolicyNetwork",
+    "PPOTrainer",
+    "ReplayBuffer",
+    "Transition",
+    "VoiceAIEnvironment",
+    "VoiceAIState",
 ]
