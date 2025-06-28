@@ -1,27 +1,141 @@
 # Cont-Time Emotion Voice Agent — Lean-Mac M2 Edition
 
 ## Project Overview
-A real-time, emotion-adaptive voice agent optimized for MacBook M2 (8GB RAM) with minimal cloud GPU usage for fine-tuning. This project implements a lightweight yet powerful voice agent that can understand and respond with appropriate emotional tone.
+A real-time emotion-aware voice agent that adapts responses based on speech emotion recognition and reinforcement learning.
 
 ## Features
-- Real-time emotion detection from speech
-- Adaptive emotional response generation
-- Optimized for Apple Silicon M2 with < 1GB memory footprint
-- End-to-end latency < 120ms
-- Minimal cloud GPU usage (~$20 for fine-tuning)
+
+- Real-time speech emotion recognition
+- Emotion-adaptive responses using reinforcement learning
+- Interactive web interface with Streamlit
+- Model interpretability with SHAP
+- Support for Apple Silicon (M1/M2) acceleration
 
 ## Quick Start
-```bash
-# Clone the repository
-git clone https://github.com/jadenfix/HumanVoiceAI.git
-cd HumanVoiceAI
 
-# Set up the environment
-make setup
+1. Clone the repository:
+   ```bash
+   git clone https://github.com/jadenfix/HumanVoiceAI.git
+   cd HumanVoiceAI
+   ```
 
-# Run the demo
-make demo
+2. Set up the environment:
+   ```bash
+   # Install system dependencies
+   ./scripts/setup.sh
+   
+   # Activate virtual environment
+   source venv/bin/activate  # On Unix/macOS
+   # or
+   .\venv\Scripts\activate  # On Windows
+   
+   # Install in development mode
+   pip install -e .
+   ```
+
+3. Run the application:
+   ```bash
+   make demo
+   # or
+   python -m human_voice_ai
+   ```
+
+## Project Structure
+
 ```
+voiceAI/
+├── .github/                   # GitHub workflows
+├── configs/                   # Configuration files
+│   ├── app_config.yaml        # Application configuration
+│   └── ser_config.yaml        # SER model configuration
+├── data/                      # Data files
+│   ├── raw/                   # Raw data
+│   ├── processed/             # Processed data
+│   └── samples/               # Sample audio files
+├── docs/                      # Documentation
+├── logs/                      # Log files
+├── models/                    # Trained models
+│   └── checkpoints/           # Model checkpoints
+├── notebooks/                 # Jupyter notebooks
+├── scripts/                   # Utility and training scripts
+│   ├── setup.sh               # Setup script
+│   └── train/                 # Training scripts
+├── src/                       # Source code
+│   └── human_voice_ai/        # Main package
+│       ├── __init__.py
+│       ├── __main__.py        # CLI entry point
+│       ├── audio/             # Audio processing
+│       ├── emotion/           # Emotion recognition
+│       ├── interpretability/  # Model interpretation
+│       ├── policy/            # RL policies
+│       ├── tts/               # Text-to-speech
+│       └── utils/             # Utility functions
+├── tests/                     # Tests
+│   ├── integration/           # Integration tests
+│   └── unit/                  # Unit tests
+├── .gitignore
+├── .pre-commit-config.yaml
+├── Dockerfile
+├── LICENSE
+├── Makefile
+├── pyproject.toml
+├── README.md
+└── requirements.txt
+```
+
+## Development
+
+### Setting Up Development Environment
+
+1. Install development dependencies:
+   ```bash
+   pip install -e ".[dev]"
+   pre-commit install
+   ```
+
+2. Run tests:
+   ```bash
+   make test
+   ```
+
+3. Run linter:
+   ```bash
+   make lint
+   ```
+
+4. Format code:
+   ```bash
+   make format
+   ```
+
+## Training Models
+
+### Speech Emotion Recognition (SER)
+
+```bash
+python scripts/train/train_emotion.py --config configs/ser_config.yaml
+```
+
+### Text-to-Speech (TTS)
+
+```bash
+python scripts/train/train_tts.py --config configs/tts_config.yaml
+```
+
+## License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+## Contact
+
+- Jaden Fix
+- Email: jadenfix123@gmail.com
+- GitHub: [jadenfix](https://github.com/jadenfix)
+- LinkedIn: [jadenfix](https://www.linkedin.com/in/jadenfix)
+- Email: jadenfix123@gmail.com
+
+## Contributing
+Contributions are welcome! Please read our [Contributing Guidelines](CONTRIBUTING.md) for details.
 
 ## System Requirements
 - Apple Silicon M2 with 8GB+ unified memory
@@ -54,47 +168,11 @@ make demo
    pip install -r requirements.txt
    ```
 
-## Project Structure
-```
-HumanVoiceAI/
-├── data/                   # Datasets and voice samples
-├── models/                 # Pretrained and fine-tuned models
-├── src/                    # Source code
-│   ├── audio/              # Audio processing
-│   ├── emotion/            # Emotion detection
-│   ├── tts/                # Text-to-speech
-│   └── utils/              # Utility functions
-├── tests/                  # Unit tests
-├── .gitignore
-├── LICENSE
-├── Makefile
-├── pyproject.toml
-└── README.md
-```
-
-## Training
-For fine-tuning models on cloud GPU (costs ~$20):
-```bash
-make train-cloud
-```
-
 ## Evaluation
 Run the test suite:
 ```bash
 make test
 ```
-
-## License
-MIT License
-
-## Author
-Jaden Fix
-- GitHub: [jadenfix](https://github.com/jadenfix)
-- LinkedIn: [jadenfix](https://linkedin.com/in/jadenfix)
-- Email: jadenfix123@gmail.com
-
-## Contributing
-Contributions are welcome! Please read our [Contributing Guidelines](CONTRIBUTING.md) for details.
 
 ## Acknowledgments
 - RAVDESS and CREMA-D datasets

@@ -1,0 +1,37 @@
+# RL Policy Test Configuration
+
+# Network architecture
+network:
+  hidden_dims: [64, 32]  # Smaller network for testing
+  dropout: 0.1
+
+# Training parameters
+training:
+  lr: 1e-3
+  gamma: 0.99
+  batch_size: 32
+  buffer_size: 1000
+  target_update: 5
+
+# Exploration
+exploration:
+  epsilon_start: 1.0
+  epsilon_end: 0.01
+  epsilon_decay: 0.995
+
+# Rewards
+rewards:
+  correct_emotion: 1.0
+  incorrect_emotion: -0.5
+  neutral_response: 0.1
+
+# Action space
+actions:
+  - name: "neutral"
+    description: "Respond in a neutral tone"
+  - name: "happy"
+    description: "Respond in a happy/positive tone"
+  - name: "sad"
+    description: "Respond in a sad/empathetic tone"
+  - name: "angry"
+    description: "Respond in a firm/assertive tone"
