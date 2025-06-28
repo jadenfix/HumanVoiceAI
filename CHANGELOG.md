@@ -18,6 +18,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - CI/CD pipeline with GitHub Actions
 - Docker support
 
+### Fixed
+- Code formatting issues with Black
+- GitHub Actions workflow for consistent code style
+- RL policy implementation and tests
+
 ### Changed
 - Reorganized project structure for better maintainability
 - Updated README with detailed setup and usage instructions
