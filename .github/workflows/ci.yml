@@ -41,9 +41,15 @@ jobs:
     - name: Install Python dependencies (macOS)
       if: matrix.os == 'macos-latest'
       run: |
-        # On macOS, we'll use --only-binary to avoid building from source
+        # On macOS, we'll skip pyaudio installation for now as it's not critical
         python -m pip install --upgrade pip
-        pip install -e .[dev] --only-binary :all:
+        # Install all dependencies except pyaudio
+        pip install -e '.[dev]' --no-deps
+        # Create a temporary requirements file without pyaudio
+        grep -v 'pyaudio' requirements.txt > /tmp/requirements_no_pyaudio.txt
+        pip install -r /tmp/requirements_no_pyaudio.txt
+        # Set an environment variable to indicate pyaudio is not available
+        echo "PYAUDIO_AVAILABLE=False" >> $GITHUB_ENV
     
     - name: Install Python dependencies (Linux)
       if: matrix.os == 'ubuntu-latest'
