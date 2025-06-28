@@ -32,12 +32,21 @@ jobs:
       with:
         python-version: ${{ matrix.python-version }}
         
-    - name: Install system dependencies
+    - name: Install system dependencies (Linux)
+      if: matrix.os == 'ubuntu-latest'
       run: |
         sudo apt-get update
         sudo apt-get install -y portaudio19-dev python3-pyaudio
-        
-    - name: Install Python dependencies
+    
+    - name: Install Python dependencies (macOS)
+      if: matrix.os == 'macos-latest'
+      run: |
+        # On macOS, we'll use --only-binary to avoid building from source
+        python -m pip install --upgrade pip
+        pip install -e .[dev] --only-binary :all:
+    
+    - name: Install Python dependencies (Linux)
+      if: matrix.os == 'ubuntu-latest'
       run: |
         python -m pip install --upgrade pip
         pip install -e .[dev]
