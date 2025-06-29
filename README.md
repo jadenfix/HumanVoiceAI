@@ -129,7 +129,6 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 ## Contact
 
 - Jaden Fix
-- Email: jadenfix123@gmail.com
 - GitHub: [jadenfix](https://github.com/jadenfix)
 - LinkedIn: [jadenfix](https://www.linkedin.com/in/jadenfix)
 - Email: jadenfix123@gmail.com
