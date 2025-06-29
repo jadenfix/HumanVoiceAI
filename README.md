@@ -1,6 +1,6 @@
 # Emotion Voice Agent — Lean-Mac M2 Edition
 
-##Live @ https://human-voice-ai-frontend.vercel.app/ (web & mobile)
+## Live @ https://human-voice-ai-frontend.vercel.app/ (web & mobile)
 
 ## Project Overview
 A real-time emotion-aware voice agent that adapts responses based on speech emotion recognition and reinforcement learning.
