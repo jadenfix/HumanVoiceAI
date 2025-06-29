@@ -1,5 +1,7 @@
 import type { Metadata } from "next";
 import { Inter } from "next/font/google";
+import Link from "next/link";
+import { usePathname } from "next/navigation";
 import "./globals.css";
 
 const inter = Inter({
@@ -22,10 +24,38 @@ export default function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  const pathname = typeof window !== "undefined" ? window.location.pathname : "/";
+
+  const navItems = [
+    { href: "/", label: "Home" },
+    { href: "/learn", label: "Math & Architecture" },
+    { href: "/about", label: "About" },
+  ];
+
   return (
     <html lang="en" className="h-full">
       <body className={`${inter.variable} font-sans antialiased min-h-screen bg-background text-foreground`}>
-        <main className="min-h-screen">
+        {/* Fixed Navigation Bar */}
+        <header className="fixed top-0 left-0 right-0 z-50 backdrop-blur-sm bg-black/30 border-b border-white/10">
+          <div className="max-w-6xl mx-auto flex items-center justify-between px-6 py-3">
+            <Link href="/" className="text-lg font-semibold bg-gradient-to-r from-blue-300 via-purple-300 to-pink-300 bg-clip-text text-transparent">
+              Voice&nbsp;AI
+            </Link>
+            <nav className="space-x-4">
+              {navItems.map((item) => (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  className={`relative px-3 py-1 text-sm rounded-full transition-colors duration-300 hover:bg-white/10 ${pathname === item.href ? "bg-white/10" : ""}`}
+                >
+                  {item.label}
+                </Link>
+              ))}
+            </nav>
+          </div>
+        </header>
+        {/* Offset for fixed header */}
+        <main className="pt-16 min-h-screen">
           {children}
         </main>
       </body>
