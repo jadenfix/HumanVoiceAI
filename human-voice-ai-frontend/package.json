@@ -1,7 +1,10 @@
 {
-  "name": "human-voice-ai-frontend",
+  "name": "voice-ai-platform",
   "version": "0.1.0",
   "private": true,
+  "description": "Advanced voice emotion analysis platform with real-time processing",
+  "author": "Jaden Fix",
+  "license": "MIT",
   "scripts": {
     "dev": "next dev",
     "build": "next build",
