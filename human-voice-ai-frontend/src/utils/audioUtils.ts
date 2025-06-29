@@ -21,9 +21,10 @@ export const blobToBase64 = (blob: Blob): Promise<string> => {
     const reader = new FileReader();
     reader.onloadend = () => {
       if (typeof reader.result === 'string') {
-        resolve(reader.result.split(',')[1]); // Remove the data URL prefix
+        const base64 = reader.result.split(',')[1] ?? '';
+        resolve(base64); // Remove the data URL prefix
       } else {
-        reject(new Error('Failed to read blob as base64'));
+        reject(new Error('Failed to read blob'));
       }
     };
     reader.onerror = () => {
