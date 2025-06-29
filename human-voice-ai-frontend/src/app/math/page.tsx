@@ -42,7 +42,7 @@ export default function MathPage() {
               <p>
                 The magnitude spectrum is filtered by <code>M</code> triangular Mel filters. Log energies are decorrelated using the Discrete Cosine Transform (DCT) to yield cepstral coefficients <code>c_m</code>:
               </p>
-              <Equation value="c_m = \\sum_{k=1}^{K} \\ln\\left|X(k)\\right|\\,\\cos\\left(m\\frac{(k-0.5)\\pi}{K}\\right),\\;0\\le m < M" />
+              <Equation value="\\displaystyle c_m = \\sum_{k=1}^{K} \\ln\,|X(k)| \\cos\!\\left( m\\frac{(k-0.5)\\pi}{K} \\right),\\; 0 \\le m < M" />
             </div>
 
             <div>
