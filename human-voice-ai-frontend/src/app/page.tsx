@@ -240,6 +240,11 @@ export default function VoiceAI() {
             <p className="text-xl text-gray-300 max-w-2xl mx-auto mb-4">
               Advanced emotion detection using state-of-the-art machine learning models
             </p>
+            <div className="mt-4">
+              <a href="/learn" className="inline-block px-4 py-2 text-sm bg-white/10 hover:bg-white/20 rounded-full text-gray-200 hover:text-white transition-colors">
+                📚 Learn the Math &amp; Architecture
+              </a>
+            </div>
             {recordingCount > 0 && (
               <div className="inline-flex items-center bg-white/10 backdrop-blur-sm rounded-full px-4 py-2 text-gray-300">
                 <FaHistory className="mr-2" />
