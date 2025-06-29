@@ -278,11 +278,11 @@ class VoiceAIApp:
             st.markdown("""
                 <div class="analytics-panel">
                     <h3 style="text-align: center; margin-bottom: 1rem;">🎤 Voice Recording</h3>
-                    <p style="text-align: center; color: #64748b;">Click the button below to record 3 seconds of audio</p>
+                    <p style="text-align: center; color: #64748b;">Click the button below to record 5 seconds of audio</p>
                 </div>
             """, unsafe_allow_html=True)
             
-            if st.button("🎤 Record 3 Seconds", key="record_btn", type="primary", use_container_width=True):
+            if st.button("🎤 Record 5 Seconds", key="record_btn", type="primary", use_container_width=True):
                 self.record_and_analyze()
             
             if st.button("🧹 Clear History", key="clear_btn", use_container_width=True):
@@ -291,9 +291,9 @@ class VoiceAIApp:
                 st.rerun()
     
     def record_and_analyze(self):
-        """Record audio and perform analysis."""
-        with st.spinner("🎵 Recording audio..."):
-            audio_file, audio_data = self.detector.record_audio(duration=3.0)
+        """Record audio and perform analysis (5-second recording)."""
+        with st.spinner("🎵 Recording 5 seconds of audio..."):
+            audio_file, audio_data = self.detector.record_audio(duration=5.0)
         
         if audio_file and audio_data is not None:
             with st.spinner("🧠 Analyzing emotion..."):
