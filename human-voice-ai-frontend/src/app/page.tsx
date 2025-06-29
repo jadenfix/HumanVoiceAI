@@ -221,36 +221,62 @@ export default function VoiceAI() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-indigo-900 via-purple-900 to-pink-900">
-      {/* Hero Section */}
-      <div className="relative overflow-hidden">
+      {/* Hero Section with animated blobs */}
+      <div className="relative overflow-hidden" style={{ perspective: 1000 }}>
         <div className="absolute inset-0 bg-black/20"></div>
+        {/* Animated gradient blobs */}
+        <motion.div
+          className="absolute -top-40 -left-40 w-96 h-96 bg-gradient-to-br from-blue-500 via-purple-500 to-pink-500 rounded-full filter blur-3xl opacity-40"
+          animate={{ rotate: 360 }}
+          transition={{ duration: 40, repeat: Infinity, ease: "linear" }}
+        />
+        <motion.div
+          className="absolute -bottom-48 left-1/2 w-[600px] h-[600px] bg-gradient-to-br from-emerald-400 via-sky-500 to-indigo-500 rounded-full filter blur-3xl opacity-30"
+          animate={{ rotate: -360 }}
+          transition={{ duration: 50, repeat: Infinity, ease: "linear" }}
+        />
+        <motion.div
+          className="absolute -bottom-32 -right-32 w-80 h-80 bg-gradient-to-br from-pink-500 via-fuchsia-500 to-violet-600 rounded-full filter blur-2xl opacity-50"
+          animate={{ y: [0, 40, 0] }}
+          transition={{ duration: 12, repeat: Infinity, ease: "easeInOut" }}
+        />
         <div className="relative z-10 container mx-auto px-6 py-12">
           <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.8 }}
-            className="text-center"
+            initial={{ scale: 0.9, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            transition={{ duration: 1 }}
+            className="flex items-center justify-center mb-6"
           >
-            <div className="flex items-center justify-center mb-6">
-              <FaBrain className="text-6xl text-blue-400 mr-4" />
-              <h1 className="text-6xl font-bold bg-gradient-to-r from-blue-400 via-purple-400 to-pink-400 bg-clip-text text-transparent">
-                Voice AI
-              </h1>
+            <FaBrain className="text-6xl text-blue-300 drop-shadow-lg mr-4" />
+            <h1 className="text-6xl font-extrabold bg-gradient-to-r from-blue-300 via-purple-300 to-pink-300 bg-clip-text text-transparent drop-shadow-lg">
+              Voice AI
+            </h1>
+          </motion.div>
+          <p className="text-xl text-gray-300 max-w-2xl mx-auto mb-4">
+            Advanced emotion detection using state-of-the-art machine learning models
+          </p>
+          <div className="mt-4">
+            <a href="/learn" className="inline-block px-4 py-2 text-sm bg-white/10 hover:bg-white/20 rounded-full text-gray-200 hover:text-white transition-colors">
+              📚 Learn the Math &amp; Architecture
+            </a>
+          </div>
+          {recordingCount > 0 && (
+            <div className="inline-flex items-center bg-white/10 backdrop-blur-sm rounded-full px-4 py-2 text-gray-300">
+              <FaHistory className="mr-2" />
+              {recordingCount} recording{recordingCount !== 1 ? 's' : ''} analyzed
             </div>
-            <p className="text-xl text-gray-300 max-w-2xl mx-auto mb-4">
-              Advanced emotion detection using state-of-the-art machine learning models
-            </p>
-            <div className="mt-4">
-              <a href="/learn" className="inline-block px-4 py-2 text-sm bg-white/10 hover:bg-white/20 rounded-full text-gray-200 hover:text-white transition-colors">
-                📚 Learn the Math &amp; Architecture
-              </a>
+          )}
+          {/* Scroll hint */}
+          <motion.div
+            className="mt-12 flex justify-center"
+            initial={{ opacity: 0, y: -10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 2, duration: 1 }}
+          >
+            <div className="animate-bounce text-gray-300 text-xs flex flex-col items-center">
+              <span>Scroll</span>
+              <svg className="w-4 h-4 mt-1" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M10 14a1 1 0 01-.707-.293l-5-5a1 1 0 111.414-1.414L10 11.586l4.293-4.293a1 1 0 111.414 1.414l-5 5A1 1 0 0110 14z" clipRule="evenodd" /></svg>
             </div>
-            {recordingCount > 0 && (
-              <div className="inline-flex items-center bg-white/10 backdrop-blur-sm rounded-full px-4 py-2 text-gray-300">
-                <FaHistory className="mr-2" />
-                {recordingCount} recording{recordingCount !== 1 ? 's' : ''} analyzed
-              </div>
-            )}
           </motion.div>
         </div>
       </div>
