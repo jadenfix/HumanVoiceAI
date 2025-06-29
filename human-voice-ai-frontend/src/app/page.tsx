@@ -1,307 +1,362 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
-import { MicrophoneIcon, StopIcon, PlayIcon, PauseIcon } from '@heroicons/react/24/solid';
+import { motion, AnimatePresence } from 'framer-motion';
+import { FaMicrophone, FaStop, FaPlay, FaChartLine, FaBrain, FaWaveSquare } from 'react-icons/fa';
 
-type Emotion = 'happy' | 'sad' | 'angry' | 'neutral' | 'excited';
-
-interface Message {
-  text: string;
-  sender: 'user' | 'ai';
-  emotion: Emotion;
-  timestamp: Date;
+interface EmotionResult {
+  score: number;
+  confidence: number;
+  label: string;
+  timestamp: number;
 }
 
-export default function VoiceAIChat() {
+export default function VoiceAI() {
   const [isRecording, setIsRecording] = useState(false);
-  const [isPlaying, setIsPlaying] = useState(false);
-  const [messages, setMessages] = useState<Message[]>([]);
-  const [currentEmotion, setCurrentEmotion] = useState<Emotion>('neutral');
-  const [isLoading, setIsLoading] = useState(false);
-  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [currentEmotion, setCurrentEmotion] = useState<EmotionResult | null>(null);
+  const [emotionHistory, setEmotionHistory] = useState<EmotionResult[]>([]);
+  const [audioLevel, setAudioLevel] = useState(0);
+  const [recordingTime, setRecordingTime] = useState(0);
+  
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
-  const audioChunksRef = useRef<Blob[]>([]);
+  const audioContextRef = useRef<AudioContext | null>(null);
+  const analyserRef = useRef<AnalyserNode | null>(null);
+  const intervalRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Initialize audio context
-  useEffect(() => {
-    // Request microphone permission on component mount
-    if (typeof window !== 'undefined') {
-      navigator.mediaDevices.getUserMedia({ audio: true })
-        .catch(err => console.error('Microphone access denied:', err));
-    }
-
-    // Add welcome message
-    setMessages([
-      {
-        text: 'Hello! I\'m your voice AI assistant. How can I help you today?',
-        sender: 'ai',
-        emotion: 'happy',
-        timestamp: new Date()
-      }
-    ]);
-    
-    // Set default emotion
-    setCurrentEmotion('neutral');
-  }, []);
+  const emotionMap = {
+    1: { label: 'Very Negative', emoji: '😠', color: 'from-red-500 to-red-600' },
+    2: { label: 'Slightly Negative', emoji: '😔', color: 'from-orange-500 to-orange-600' },
+    3: { label: 'Neutral', emoji: '😐', color: 'from-gray-500 to-gray-600' },
+    4: { label: 'Slightly Positive', emoji: '🙂', color: 'from-green-500 to-green-600' },
+    5: { label: 'Very Positive', emoji: '😊', color: 'from-emerald-500 to-emerald-600' }
+  };
 
   const startRecording = async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       const mediaRecorder = new MediaRecorder(stream);
+      const audioContext = new AudioContext();
+      const analyser = audioContext.createAnalyser();
+      const source = audioContext.createMediaStreamSource(stream);
+      
+      source.connect(analyser);
+      analyser.fftSize = 256;
+      
       mediaRecorderRef.current = mediaRecorder;
-      audioChunksRef.current = [];
-
+      audioContextRef.current = audioContext;
+      analyserRef.current = analyser;
+      
+      const audioChunks: Blob[] = [];
+      
       mediaRecorder.ondataavailable = (event) => {
-        if (event.data.size > 0) {
-          audioChunksRef.current.push(event.data);
-        }
+        audioChunks.push(event.data);
       };
-
+      
       mediaRecorder.onstop = async () => {
-        const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/wav' });
+        const audioBlob = new Blob(audioChunks, { type: 'audio/wav' });
         await processAudio(audioBlob);
       };
-
+      
       mediaRecorder.start();
       setIsRecording(true);
+      setRecordingTime(0);
+      
+      // Start audio level monitoring
+      const updateAudioLevel = () => {
+        if (analyserRef.current) {
+          const dataArray = new Uint8Array(analyserRef.current.frequencyBinCount);
+          analyserRef.current.getByteFrequencyData(dataArray);
+          const average = dataArray.reduce((sum, value) => sum + value, 0) / dataArray.length;
+          setAudioLevel(average / 255);
+        }
+      };
+      
+      // Start timer and audio level updates
+      intervalRef.current = setInterval(() => {
+        setRecordingTime(prev => prev + 0.1);
+        updateAudioLevel();
+      }, 100);
+      
+      // Auto-stop after 3 seconds
+      setTimeout(() => {
+        if (mediaRecorderRef.current && isRecording) {
+          stopRecording();
+        }
+      }, 3000);
+      
     } catch (error) {
-      console.error('Error accessing microphone:', error);
+      console.error('Error starting recording:', error);
     }
   };
 
   const stopRecording = () => {
-    if (mediaRecorderRef.current && isRecording) {
+    if (mediaRecorderRef.current) {
       mediaRecorderRef.current.stop();
-      mediaRecorderRef.current.stream.getTracks().forEach(track => track.stop());
       setIsRecording(false);
+      setAudioLevel(0);
+      
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current);
+      }
+      
+      if (audioContextRef.current) {
+        audioContextRef.current.close();
+      }
     }
   };
 
   const processAudio = async (audioBlob: Blob) => {
-    setIsLoading(true);
+    setIsProcessing(true);
     
     try {
-      // Add user message immediately
-      const userMessage: Message = {
-        text: 'Processing your voice...',
-        sender: 'user',
-        emotion: currentEmotion,
-        timestamp: new Date()
-      };
-      
-      setMessages(prev => [...prev, userMessage]);
-
-      // Create form data to send the audio
       const formData = new FormData();
       formData.append('audio', audioBlob, 'recording.wav');
-      formData.append('emotion', currentEmotion);
-
-      // Send to our API route
+      
       const response = await fetch('/api/process-audio', {
         method: 'POST',
         body: formData,
       });
-
-      if (!response.ok) {
-        throw new Error('Failed to process audio');
+      
+      const result = await response.json();
+      
+      if (result.success) {
+        const emotionResult: EmotionResult = {
+          score: result.emotion.score,
+          confidence: result.emotion.confidence,
+          label: result.emotion.label,
+          timestamp: Date.now()
+        };
+        
+        setCurrentEmotion(emotionResult);
+        setEmotionHistory(prev => [...prev.slice(-9), emotionResult]);
       }
-
-      const { text, emotion } = await response.json();
-
-      // Update the user message with actual content
-      const updatedUserMessage: Message = {
-        text: 'Voice message',
-        sender: 'user',
-        emotion: currentEmotion,
-        timestamp: new Date()
-      };
-
-      // Add AI response
-      const aiMessage: Message = {
-        text: text,
-        sender: 'ai',
-        emotion: emotion || 'neutral',
-        timestamp: new Date()
-      };
-
-      setMessages(prev => {
-        const updated = [...prev];
-        updated[updated.length - 1] = updatedUserMessage; // Replace the loading message
-        return [...updated, aiMessage];
-      });
     } catch (error) {
       console.error('Error processing audio:', error);
-      
-      // Add error message
-      const errorMessage: Message = {
-        text: 'Sorry, there was an error processing your request. Please try again.',
-        sender: 'ai',
-        emotion: 'sad',
-        timestamp: new Date()
-      };
-      
-      setMessages(prev => [...prev, errorMessage]);
     } finally {
-      setIsLoading(false);
+      setIsProcessing(false);
     }
   };
 
-  const togglePlayback = () => {
-    if (audioRef.current) {
-      if (isPlaying) {
-        audioRef.current.pause();
-      } else {
-        audioRef.current.play();
-      }
-      setIsPlaying(!isPlaying);
-    }
-  };
-
-  const getEmotionColor = (emotion: Emotion) => {
-    const colors = {
-      happy: 'bg-yellow-100 text-yellow-800',
-      sad: 'bg-blue-100 text-blue-800',
-      angry: 'bg-red-100 text-red-800',
-      neutral: 'bg-gray-100 text-gray-800',
-      excited: 'bg-purple-100 text-purple-800',
-    };
-    return colors[emotion];
+  const clearHistory = () => {
+    setEmotionHistory([]);
+    setCurrentEmotion(null);
   };
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <header className="bg-white shadow">
-        <div className="max-w-7xl mx-auto py-6 px-4 sm:px-6 lg:px-8">
-          <h1 className="text-3xl font-bold text-gray-900">Human Voice AI</h1>
-          <p className="mt-1 text-sm text-gray-500">Emotion-aware voice assistant</p>
+    <div className="min-h-screen bg-gradient-to-br from-indigo-900 via-purple-900 to-pink-900">
+      {/* Hero Section */}
+      <div className="relative overflow-hidden">
+        <div className="absolute inset-0 bg-black/20"></div>
+        <div className="relative z-10 container mx-auto px-6 py-16">
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.8 }}
+            className="text-center"
+          >
+            <div className="flex items-center justify-center mb-6">
+              <FaBrain className="text-6xl text-blue-400 mr-4" />
+              <h1 className="text-6xl font-bold bg-gradient-to-r from-blue-400 via-purple-400 to-pink-400 bg-clip-text text-transparent">
+                Voice AI
+              </h1>
+            </div>
+            <p className="text-xl text-gray-300 max-w-2xl mx-auto">
+              Advanced emotion detection using state-of-the-art machine learning models
+            </p>
+          </motion.div>
         </div>
-      </header>
+      </div>
 
-      <main className="max-w-3xl mx-auto py-6 sm:px-6 lg:px-8">
-        <div className="bg-white shadow overflow-hidden sm:rounded-lg">
-          {/* Chat messages */}
-          <div className="px-4 py-5 sm:p-6 h-[60vh] overflow-y-auto">
-            <div className="space-y-4">
-              {messages.map((message, index) => (
-                <div
-                  key={index}
-                  className={`flex ${message.sender === 'ai' ? 'justify-start' : 'justify-end'}`}
-                >
-                  <div
-                    className={`max-w-xs lg:max-w-md px-4 py-2 rounded-lg ${
-                      message.sender === 'ai' ? 'bg-blue-100' : 'bg-green-100'
-                    }`}
-                  >
-                    <div className="flex items-center space-x-2 mb-1">
-                      <span className="text-xs font-medium">
-                        {message.sender === 'ai' ? 'AI' : 'You'}
-                      </span>
-                      <span
-                        className={`text-xs px-2 py-0.5 rounded-full ${getEmotionColor(
-                          message.emotion
-                        )}`}
-                      >
-                        {message.emotion}
-                      </span>
-                    </div>
-                    <p className="text-sm text-gray-800">{message.text}</p>
-                    <p className="text-xs text-gray-500 text-right mt-1">
-                      {message.timestamp.toLocaleTimeString()}
-                    </p>
+      {/* Main Content */}
+      <div className="container mx-auto px-6 py-12">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-12">
+          
+          {/* Recording Section */}
+          <motion.div
+            initial={{ opacity: 0, x: -50 }}
+            animate={{ opacity: 1, x: 0 }}
+            transition={{ duration: 0.6 }}
+            className="bg-white/10 backdrop-blur-lg rounded-3xl p-8 border border-white/20"
+          >
+            <div className="text-center">
+              <h2 className="text-3xl font-bold text-white mb-6 flex items-center justify-center">
+                <FaMicrophone className="mr-3 text-blue-400" />
+                Voice Recording
+              </h2>
+              
+              {/* Audio Visualizer */}
+              <div className="mb-8">
+                <div className="h-32 bg-black/30 rounded-2xl flex items-center justify-center mb-4">
+                  <div className="flex items-end space-x-1">
+                    {Array.from({ length: 20 }).map((_, i) => (
+                      <motion.div
+                        key={i}
+                        className="w-2 bg-gradient-to-t from-blue-500 to-purple-500 rounded-full"
+                        animate={{
+                          height: isRecording ? `${Math.random() * audioLevel * 100 + 10}px` : '10px'
+                        }}
+                        transition={{ duration: 0.1 }}
+                      />
+                    ))}
                   </div>
                 </div>
-              ))}
-              {isLoading && (
-                <div className="flex justify-start">
-                  <div className="bg-gray-100 px-4 py-2 rounded-lg">
-                    <div className="flex space-x-2">
-                      <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce"></div>
-                      <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0.2s' }}></div>
-                      <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0.4s' }}></div>
-                    </div>
+                
+                {isRecording && (
+                  <div className="text-white text-sm">
+                    Recording: {recordingTime.toFixed(1)}s / 3.0s
                   </div>
-                </div>
-              )}
-            </div>
-          </div>
-
-          {/* Controls */}
-          <div className="bg-gray-50 px-4 py-4 sm:px-6 border-t border-gray-200">
-            <div className="flex flex-col sm:flex-row items-center justify-center space-y-4 sm:space-y-0 sm:space-x-4">
-            <div className="w-full sm:w-auto">
-              <label htmlFor="emotion" className="block text-sm font-medium text-gray-700 mb-1">
-                Select Emotion
-              </label>
-              <select
-                id="emotion"
-                value={currentEmotion}
-                onChange={(e) => setCurrentEmotion(e.target.value as Emotion)}
-                className="block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm rounded-md"
-                disabled={isRecording}
-              >
-                <option value="happy">😊 Happy</option>
-                <option value="sad">😢 Sad</option>
-                <option value="angry">😠 Angry</option>
-                <option value="neutral">😐 Neutral</option>
-                <option value="excited">🤩 Excited</option>
-              </select>
-            </div>
-            
-            <div className="w-full sm:w-auto">
-              {!isRecording ? (
-                <button
-                  onClick={startRecording}
-                  className="w-full inline-flex justify-center items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
-                >
-                  <MicrophoneIcon className="h-5 w-5 mr-2" />
-                  Start Recording
-                </button>
-              ) : (
-                <button
-                  onClick={stopRecording}
-                  className="w-full inline-flex justify-center items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-red-600 hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500"
-                >
-                  <StopIcon className="h-5 w-5 mr-2" />
-                  Stop Recording
-                </button>
-              )}
-            </div>
-
-              <button
-                onClick={togglePlayback}
-                disabled={!audioRef.current}
-                className={`inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white ${
-                  audioRef.current
-                    ? 'bg-green-600 hover:bg-green-700 focus:ring-green-500'
-                    : 'bg-gray-400 cursor-not-allowed'
-                } focus:outline-none focus:ring-2 focus:ring-offset-2`}
-              >
-                {isPlaying ? (
-                  <>
-                    <PauseIcon className="h-5 w-5 mr-2" />
-                    Pause
-                  </>
-                ) : (
-                  <>
-                    <PlayIcon className="h-5 w-5 mr-2" />
-                    Play Last Response
-                  </>
                 )}
+              </div>
+
+              {/* Recording Controls */}
+              <div className="space-y-4">
+                <AnimatePresence>
+                  {!isRecording && !isProcessing && (
+                    <motion.button
+                      initial={{ scale: 0 }}
+                      animate={{ scale: 1 }}
+                      exit={{ scale: 0 }}
+                      onClick={startRecording}
+                      className="w-24 h-24 bg-gradient-to-r from-blue-500 to-purple-500 rounded-full flex items-center justify-center text-white text-2xl shadow-lg hover:shadow-xl transition-shadow"
+                    >
+                      <FaMicrophone />
+                    </motion.button>
+                  )}
+                  
+                  {isRecording && (
+                    <motion.button
+                      initial={{ scale: 0 }}
+                      animate={{ scale: 1 }}
+                      exit={{ scale: 0 }}
+                      onClick={stopRecording}
+                      className="w-24 h-24 bg-gradient-to-r from-red-500 to-pink-500 rounded-full flex items-center justify-center text-white text-2xl shadow-lg hover:shadow-xl transition-shadow animate-pulse"
+                    >
+                      <FaStop />
+                    </motion.button>
+                  )}
+                  
+                  {isProcessing && (
+                    <motion.div
+                      initial={{ scale: 0 }}
+                      animate={{ scale: 1 }}
+                      exit={{ scale: 0 }}
+                      className="w-24 h-24 bg-gradient-to-r from-yellow-500 to-orange-500 rounded-full flex items-center justify-center text-white text-2xl shadow-lg"
+                    >
+                      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-white"></div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+                
+                <p className="text-gray-300 text-sm">
+                  {!isRecording && !isProcessing && 'Click to record 3 seconds of audio'}
+                  {isRecording && 'Recording... Speak now!'}
+                  {isProcessing && 'Analyzing emotion...'}
+                </p>
+              </div>
+            </div>
+          </motion.div>
+
+          {/* Results Section */}
+          <motion.div
+            initial={{ opacity: 0, x: 50 }}
+            animate={{ opacity: 1, x: 0 }}
+            transition={{ duration: 0.6 }}
+            className="bg-white/10 backdrop-blur-lg rounded-3xl p-8 border border-white/20"
+          >
+            <h2 className="text-3xl font-bold text-white mb-6 flex items-center">
+              <FaChartLine className="mr-3 text-green-400" />
+              Emotion Analysis
+            </h2>
+            
+            {currentEmotion ? (
+              <div className="space-y-6">
+                {/* Current Emotion */}
+                <div className={`bg-gradient-to-r ${emotionMap[currentEmotion.score as keyof typeof emotionMap].color} rounded-2xl p-6 text-white text-center`}>
+                  <div className="text-6xl mb-4">
+                    {emotionMap[currentEmotion.score as keyof typeof emotionMap].emoji}
+                  </div>
+                  <div className="text-2xl font-bold mb-2">
+                    {emotionMap[currentEmotion.score as keyof typeof emotionMap].label}
+                  </div>
+                  <div className="text-4xl font-bold mb-2">
+                    {currentEmotion.score}/5
+                  </div>
+                  <div className="text-sm opacity-90">
+                    Confidence: {(currentEmotion.confidence * 100).toFixed(1)}%
+                  </div>
+                </div>
+
+                {/* Confidence Meter */}
+                <div className="bg-black/30 rounded-2xl p-4">
+                  <div className="text-white text-sm mb-2">Confidence Level</div>
+                  <div className="w-full bg-gray-700 rounded-full h-3">
+                    <motion.div
+                      initial={{ width: 0 }}
+                      animate={{ width: `${currentEmotion.confidence * 100}%` }}
+                      transition={{ duration: 0.8 }}
+                      className="bg-gradient-to-r from-blue-500 to-purple-500 h-3 rounded-full"
+                    />
+                  </div>
+                  <div className="text-right text-white text-xs mt-1">
+                    {(currentEmotion.confidence * 100).toFixed(1)}%
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div className="text-center text-gray-400 py-12">
+                <FaWaveSquare className="text-6xl mb-4 mx-auto opacity-50" />
+                <p className="text-lg">Record audio to see emotion analysis</p>
+              </div>
+            )}
+          </motion.div>
+        </div>
+
+        {/* History Section */}
+        {emotionHistory.length > 0 && (
+          <motion.div
+            initial={{ opacity: 0, y: 50 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.6, delay: 0.3 }}
+            className="mt-12 bg-white/10 backdrop-blur-lg rounded-3xl p-8 border border-white/20"
+          >
+            <div className="flex justify-between items-center mb-6">
+              <h2 className="text-3xl font-bold text-white flex items-center">
+                <FaChartLine className="mr-3 text-purple-400" />
+                Emotion Timeline
+              </h2>
+              <button
+                onClick={clearHistory}
+                className="px-4 py-2 bg-red-500/20 hover:bg-red-500/30 text-red-300 rounded-lg transition-colors"
+              >
+                Clear History
               </button>
             </div>
-          </div>
-        </div>
-      </main>
-
-      <footer className="bg-white mt-8 border-t border-gray-200">
-        <div className="max-w-7xl mx-auto py-6 px-4 sm:px-6 lg:px-8">
-          <p className="text-center text-sm text-gray-500">
-            &copy; {new Date().getFullYear()} Human Voice AI. All rights reserved.
-          </p>
-        </div>
-      </footer>
-
-      <audio ref={audioRef} className="hidden" />
+            
+            <div className="grid grid-cols-2 md:grid-cols-5 lg:grid-cols-10 gap-4">
+              {emotionHistory.map((emotion, index) => (
+                <motion.div
+                  key={emotion.timestamp}
+                  initial={{ scale: 0, opacity: 0 }}
+                  animate={{ scale: 1, opacity: 1 }}
+                  transition={{ duration: 0.3, delay: index * 0.1 }}
+                  className={`bg-gradient-to-r ${emotionMap[emotion.score as keyof typeof emotionMap].color} rounded-xl p-4 text-white text-center`}
+                >
+                  <div className="text-2xl mb-1">
+                    {emotionMap[emotion.score as keyof typeof emotionMap].emoji}
+                  </div>
+                  <div className="text-lg font-bold">
+                    {emotion.score}
+                  </div>
+                  <div className="text-xs opacity-80">
+                    {(emotion.confidence * 100).toFixed(0)}%
+                  </div>
+                </motion.div>
+              ))}
+            </div>
+          </motion.div>
+        )}
+      </div>
     </div>
   );
 }

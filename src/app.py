@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Streamlit web interface for the Emotion-Aware Voice Agent.
+Streamlit web interface for the Emotion-Aware Voice Agent with real audio processing.
 """
 
 import os
@@ -14,14 +14,16 @@ from pathlib import Path
 from typing import Dict, List, Any, Optional, Tuple
 import io
 from PIL import Image
+import threading
+import queue
+import sounddevice as sd
+import librosa
 
 # Add project root to path
 sys.path.append(str(Path(__file__).parent.absolute()))
 
 # Import custom modules
-from human_voice_ai.audio.streaming import AudioStream, AudioProcessor
 from human_voice_ai.policy.rl_policy import RLPolicy
-from human_voice_ai.interpretability.shap_explainer import SERExplainer
 
 # Set page config
 st.set_page_config(
@@ -87,6 +89,12 @@ st.markdown(
         background-color: #e8f5e9;
         color: #2e7d32;
     }
+    .audio-level {
+        background: linear-gradient(90deg, #4CAF50, #FFC107, #F44336);
+        height: 20px;
+        border-radius: 10px;
+        margin: 10px 0;
+    }
 </style>
 """,
     unsafe_allow_html=True,
@@ -95,7 +103,7 @@ st.markdown(
 # Default emotion classes (can be overridden by config)
 DEFAULT_EMOTIONS = [
     "neutral",
-    "happy",
+    "happy", 
     "sad",
     "angry",
     "fear",
@@ -105,19 +113,119 @@ DEFAULT_EMOTIONS = [
 ]
 
 
+class RealTimeAudioProcessor:
+    """Real-time audio processor for emotion detection."""
+    
+    def __init__(self, sample_rate=16000, chunk_size=1024):
+        self.sample_rate = sample_rate
+        self.chunk_size = chunk_size
+        self.audio_queue = queue.Queue()
+        self.is_recording = False
+        self.current_level = 0.0
+        self.audio_buffer = []
+        self.stream = None
+        
+    def audio_callback(self, indata, frames, time_info, status):
+        """Callback function for audio stream."""
+        if status:
+            print(f"Audio callback status: {status}")
+        
+        if self.is_recording:
+            # Calculate audio level (RMS)
+            audio_data = indata[:, 0] if len(indata.shape) > 1 else indata
+            self.current_level = np.sqrt(np.mean(audio_data**2))
+            
+            # Store audio for processing
+            self.audio_buffer.extend(audio_data)
+            
+            # Keep buffer to reasonable size (5 seconds)
+            max_buffer_size = self.sample_rate * 5
+            if len(self.audio_buffer) > max_buffer_size:
+                self.audio_buffer = self.audio_buffer[-max_buffer_size:]
+            
+            # Put in queue for processing
+            try:
+                self.audio_queue.put_nowait(audio_data.copy())
+            except queue.Full:
+                pass  # Skip if queue is full
+    
+    def start_recording(self):
+        """Start audio recording."""
+        try:
+            self.is_recording = True
+            self.stream = sd.InputStream(
+                callback=self.audio_callback,
+                channels=1,
+                samplerate=self.sample_rate,
+                blocksize=self.chunk_size,
+                device=None  # Use default input device
+            )
+            self.stream.start()
+            return True
+        except Exception as e:
+            print(f"Error starting audio stream: {e}")
+            return False
+    
+    def stop_recording(self):
+        """Stop audio recording."""
+        self.is_recording = False
+        if self.stream:
+            self.stream.stop()
+            self.stream.close()
+            self.stream = None
+    
+    def get_audio_level(self):
+        """Get current audio level."""
+        return min(self.current_level * 100, 100)  # Scale to 0-100
+    
+    def get_recent_audio(self, duration_seconds=2):
+        """Get recent audio data for processing."""
+        if len(self.audio_buffer) < self.sample_rate * duration_seconds:
+            return None
+        
+        # Get last N seconds of audio
+        samples_needed = int(self.sample_rate * duration_seconds)
+        return np.array(self.audio_buffer[-samples_needed:])
+    
+    def analyze_emotion(self, audio_data):
+        """Simple emotion analysis based on audio features."""
+        if audio_data is None or len(audio_data) == 0:
+            return 0  # neutral
+        
+        try:
+            # Extract basic audio features
+            rms = np.sqrt(np.mean(audio_data**2))
+            zero_crossings = np.sum(np.diff(np.signbit(audio_data)))
+            spectral_centroid = np.mean(librosa.feature.spectral_centroid(y=audio_data, sr=self.sample_rate))
+            
+            # Simple rule-based emotion classification
+            # This is a placeholder - in a real system you'd use a trained model
+            if rms > 0.1 and zero_crossings > 1000:
+                return 3  # angry
+            elif rms > 0.05 and spectral_centroid > 2000:
+                return 1  # happy
+            elif rms < 0.02:
+                return 2  # sad
+            elif zero_crossings > 1500:
+                return 4  # fear
+            else:
+                return 0  # neutral
+                
+        except Exception as e:
+            print(f"Error in emotion analysis: {e}")
+            return 0  # neutral
+
+
 class VoiceAgentApp:
     """Main application class for the Emotion-Aware Voice Agent."""
 
     def __init__(self):
         """Initialize the application."""
-        self.audio_stream = None
-        self.audio_processor = None
+        self.audio_processor = RealTimeAudioProcessor()
         self.rl_policy = None
-        self.shap_explainer = None
-        self.emotion_history = []
-        self.audio_buffer = np.array([])
         self.class_names = DEFAULT_EMOTIONS
         self.setup_session_state()
+        self.setup_models()
 
     def setup_session_state(self):
         """Initialize Streamlit session state variables."""
@@ -127,6 +235,10 @@ class VoiceAgentApp:
             st.session_state.emotion_history = []
         if "action_history" not in st.session_state:
             st.session_state.action_history = []
+        if "audio_level" not in st.session_state:
+            st.session_state.audio_level = 0.0
+        if "last_emotion_time" not in st.session_state:
+            st.session_state.last_emotion_time = 0
 
     def setup_models(self):
         """Initialize the machine learning models."""
@@ -138,61 +250,80 @@ class VoiceAgentApp:
             else "cpu"
         )
 
-        # Initialize RL policy (dummy for now)
+        # Initialize RL policy
         state_dim = len(self.class_names)
         action_dim = 5  # Number of possible actions
         self.rl_policy = RLPolicy(
             state_dim=state_dim, action_dim=action_dim, hidden_dim=128, device=device
         )
 
-        # Load pre-trained models here
-        # self.audio_processor = AudioProcessor(ser_model, device=device)
-        # self.shap_explainer = SERExplainer(ser_model, background_data, self.class_names, device)
-
     def start_recording(self):
         """Start the audio stream."""
-        if self.audio_stream is None:
-            self.audio_stream = AudioStream(callback=self.audio_callback)
-            self.audio_stream.start()
+        success = self.audio_processor.start_recording()
+        if success:
             st.session_state.recording = True
-            st.experimental_rerun()
+            st.success("🎤 Recording started! Please speak...")
+        else:
+            st.error("❌ Failed to start recording. Please check microphone permissions.")
+        st.rerun()
 
     def stop_recording(self):
         """Stop the audio stream."""
-        if self.audio_stream is not None:
-            self.audio_stream.stop()
-            self.audio_stream = None
-            st.session_state.recording = False
-            st.experimental_rerun()
+        self.audio_processor.stop_recording()
+        st.session_state.recording = False
+        st.success("⏹️ Recording stopped.")
+        st.rerun()
 
-    def audio_callback(self, audio_chunk: np.ndarray):
-        """Process an audio chunk from the stream.
-
-        Args:
-            audio_chunk: Audio data chunk (n_samples, n_channels)
-        """
-        # For now, just simulate emotion detection
-        # In a real app, this would use the audio_processor
-        if np.random.random() > 0.5:  # Simulate some processing delay
-            emotion = np.random.randint(0, len(self.class_names))
-            st.session_state.emotion_history.append(emotion)
-            if len(st.session_state.emotion_history) > 100:
-                st.session_state.emotion_history = st.session_state.emotion_history[
-                    -100:
-                ]
+    def update_emotion_analysis(self):
+        """Update emotion analysis from recent audio."""
+        if st.session_state.recording:
+            # Update audio level
+            st.session_state.audio_level = self.audio_processor.get_audio_level()
+            
+            # Analyze emotion every 2 seconds
+            current_time = time.time()
+            if current_time - st.session_state.last_emotion_time > 2.0:
+                recent_audio = self.audio_processor.get_recent_audio(duration_seconds=2)
+                if recent_audio is not None:
+                    emotion = self.audio_processor.analyze_emotion(recent_audio)
+                    st.session_state.emotion_history.append(emotion)
+                    st.session_state.last_emotion_time = current_time
+                    
+                    # Keep history manageable
+                    if len(st.session_state.emotion_history) > 100:
+                        st.session_state.emotion_history = st.session_state.emotion_history[-100:]
 
     def render_status_bar(self):
         """Render the status bar."""
         status_text = "🔴 RECORDING" if st.session_state.recording else "🟢 IDLE"
         status_class = "recording" if st.session_state.recording else "idle"
+        
+        # Add audio level indicator
+        level_indicator = ""
+        if st.session_state.recording:
+            level = st.session_state.audio_level
+            level_indicator = f" (Level: {level:.1f}%)"
+        
         st.markdown(
             f"""
             <div class="status {status_class}">
-                <h3>{status_text}</h3>
+                <h3>{status_text}{level_indicator}</h3>
             </div>
         """,
             unsafe_allow_html=True,
         )
+        
+        # Show audio level bar
+        if st.session_state.recording:
+            level = st.session_state.audio_level
+            st.markdown(
+                f"""
+                <div class="audio-level">
+                    <div style="width: {level}%; height: 100%; background: white; border-radius: 10px; transition: width 0.3s;"></div>
+                </div>
+                """,
+                unsafe_allow_html=True
+            )
 
     def render_emotion_distribution(self):
         """Render the emotion distribution chart."""
@@ -248,7 +379,7 @@ class VoiceAgentApp:
                     <p>{hist[dominant_idx]} samples ({hist[dominant_idx]/total*100:.1f}%)</p>
                 </div>
             """,
-                unsafe_append_html=True,
+                unsafe_allow_html=True,
             )
 
     def get_emotion_emoji(self, emotion_idx: int) -> str:
@@ -281,7 +412,7 @@ class VoiceAgentApp:
             if st.button("🧹 Clear Data", key="clear_btn"):
                 st.session_state.emotion_history = []
                 st.session_state.action_history = []
-                st.experimental_rerun()
+                st.rerun()
 
     def render_audio_waveform(self):
         """Render the live audio waveform."""
@@ -292,11 +423,18 @@ class VoiceAgentApp:
         fig, ax = plt.subplots(figsize=(10, 2))
 
         if st.session_state.recording:
-            # Simulate live waveform
-            t = np.linspace(0, 2 * np.pi * 5, 100)
-            y = np.sin(t + time.time() * 5) * 0.5 + 0.5
-            ax.plot(y, color="#2196F3", linewidth=1.5)
+            # Show real-time audio level as waveform
+            level = st.session_state.audio_level / 100.0
+            t = np.linspace(0, 2 * np.pi * 3, 100)
+            y = np.sin(t + time.time() * 10) * level + 0.5
+            ax.plot(y, color="#2196F3", linewidth=2)
+            ax.fill_between(range(len(y)), 0, y, alpha=0.3, color="#2196F3")
+        else:
+            # Show static waveform when not recording
+            y = np.zeros(100) + 0.5
+            ax.plot(y, color="#cccccc", linewidth=1)
 
+        ax.set_ylim(0, 1)
         ax.axis("off")
         ax.margins(x=0)
 
@@ -317,7 +455,7 @@ class VoiceAgentApp:
         if not st.session_state.emotion_history:
             st.info("Record some audio to enable actions")
             return
-
+        
         # Get current emotion state
         if st.session_state.emotion_history:
             current_emotion = st.session_state.emotion_history[-1]
@@ -332,88 +470,76 @@ class VoiceAgentApp:
 
             # Map action to response
             action_map = [
-                (
-                    "🤖 Generate Response",
-                    f"Generating a response for {emotion_name} emotion...",
-                ),
+                ("🤖 Generate Response", f"Generating a response for {emotion_name} emotion..."),
                 ("📝 Take Notes", f"Taking notes about {emotion_name} emotion..."),
-                (
-                    "🔔 Set Reminder",
-                    f"Setting a reminder to follow up on {emotion_name} emotion...",
-                ),
-                (
-                    "📊 Show Analytics",
-                    f"Showing analytics for {emotion_name} emotion...",
-                ),
+                ("🔔 Set Reminder", f"Setting a reminder to follow up on {emotion_name} emotion..."),
+                ("📊 Show Analytics", f"Showing analytics for {emotion_name} emotion..."),
                 ("❓ Get Help", f"Getting help for {emotion_name} emotion..."),
             ]
 
             # Display action buttons
-            for i, (label, _) in enumerate(action_map):
+            for i, (label, message) in enumerate(action_map):
                 if st.button(f"{label}", key=f"action_{i}"):
-                    st.session_state.action_history.append(
-                        {
-                            "action": i,
-                            "emotion": current_emotion,
-                            "timestamp": time.time(),
-                            "message": action_map[i][1],
-                        }
-                    )
-                    st.experimental_rerun()
+                    st.session_state.action_history.append({
+                        "action": i,
+                        "emotion": current_emotion,
+                        "timestamp": time.time(),
+                        "message": message,
+                    })
+                    st.success(message)
+                    st.rerun()
 
     def render_action_history(self):
-        """Render the history of actions taken."""
-        if (
-            not hasattr(st.session_state, "action_history")
-            or not st.session_state.action_history
-        ):
+        """Render the action history."""
+        if not st.session_state.action_history:
             return
 
         st.subheader("Action History")
-
-        for i, action in enumerate(
-            reversed(st.session_state.action_history[-5:])
-        ):  # Show last 5 actions
+        for i, action in enumerate(reversed(st.session_state.action_history[-5:])):
+            emotion_name = self.class_names[action["emotion"]].title()
             emoji = self.get_emotion_emoji(action["emotion"])
             timestamp = time.strftime("%H:%M:%S", time.localtime(action["timestamp"]))
-
-            with st.expander(f"{timestamp} - {emoji} {action['message']}"):
-                st.write(f"Action: {action['action']}")
-                st.write(f"Emotion: {self.class_names[action['emotion']].title()}")
+            
+            st.markdown(f"**{timestamp}** - {emoji} {emotion_name}: {action['message']}")
 
     def run(self):
-        """Run the Streamlit application."""
-        st.title("🎙️ Emotion-Aware Voice Agent")
+        """Run the Streamlit app."""
+        st.title("🎤 Emotion-Aware Voice Agent")
+        
+        # Update emotion analysis if recording
+        self.update_emotion_analysis()
 
-        # Initialize models
-        if "models_initialized" not in st.session_state:
-            with st.spinner("Initializing models..."):
-                self.setup_models()
-                st.session_state.models_initialized = True
-
-        # Main layout
+        # Status bar
         self.render_status_bar()
-        self.render_controls()
 
-        # Two main columns
+        # Main content
         col1, col2 = st.columns([2, 1])
 
         with col1:
+            # Controls
+            self.render_controls()
+            
+            # Live Audio Waveform
             st.subheader("Live Audio")
             self.render_audio_waveform()
 
+            # Emotion Analysis
             st.subheader("Emotion Analysis")
             self.render_emotion_distribution()
 
         with col2:
+            # Actions
             self.render_action_buttons()
+            
+            # Action History
             self.render_action_history()
+
+        # Auto-refresh when recording
+        if st.session_state.recording:
+            time.sleep(0.1)
+            st.rerun()
 
 
 if __name__ == "__main__":
-    # Initialize the app
-    if "app" not in st.session_state:
-        st.session_state.app = VoiceAgentApp()
-
-    # Run the app
-    st.session_state.app.run()
+    app = VoiceAgentApp()
+    app.run()
