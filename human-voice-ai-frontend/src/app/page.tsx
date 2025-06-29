@@ -262,18 +262,6 @@ export default function VoiceAI() {
               {recordingCount} recording{recordingCount !== 1 ? 's' : ''} analyzed
             </div>
           )}
-          {/* Scroll hint */}
-          <motion.div
-            className="mt-12 flex justify-center"
-            initial={{ opacity: 0, y: -10 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 2, duration: 1 }}
-          >
-            <div className="animate-bounce text-gray-300 text-xs flex flex-col items-center">
-              <span>Scroll</span>
-              <svg className="w-4 h-4 mt-1" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M10 14a1 1 0 01-.707-.293l-5-5a1 1 0 111.414-1.414L10 11.586l4.293-4.293a1 1 0 111.414 1.414l-5 5A1 1 0 0110 14z" clipRule="evenodd" /></svg>
-            </div>
-          </motion.div>
         </div>
       </div>
 

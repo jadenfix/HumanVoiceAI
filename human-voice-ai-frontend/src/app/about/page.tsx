@@ -39,7 +39,7 @@ export default function AboutPage() {
             >
               <h3 className="text-lg font-semibold mb-2 text-white">🎓 Background</h3>
               <p className="text-sm text-gray-300 leading-relaxed">
-                • M.S. Quant – Focus on ML &amp; DSP
+                • M.S. Quant – Focus on ML &amp; Stochastic Methods
               </p>
             </motion.div>
 

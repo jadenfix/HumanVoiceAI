@@ -1,7 +1,6 @@
 import type { Metadata } from "next";
 import { Inter } from "next/font/google";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
 import "./globals.css";
 
 const inter = Inter({
@@ -28,7 +27,8 @@ export default function RootLayout({
 
   const navItems = [
     { href: "/", label: "Home" },
-    { href: "/learn", label: "Math & Architecture" },
+    { href: "/math", label: "Math" },
+    { href: "/architecture", label: "Architecture" },
     { href: "/about", label: "About" },
   ];
 
