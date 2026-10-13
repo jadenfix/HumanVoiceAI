@@ -45,3 +45,35 @@ def test_get_available_actions(test_config_path):
     assert isinstance(actions, list)
     assert len(actions) > 0
     assert all(isinstance(action, Action) for action in actions)
+
+
+def test_manager_update_checkpoint_roundtrip(test_config_path, tmp_path):
+    manager = PolicyManager(config_path=test_config_path)
+    manager.policy.batch_size = 1
+    state = np.ones(6, dtype=np.float32) / 6
+    loss = manager.update_policy(state, 0, 1.0, None, True)
+    assert np.isfinite(loss)
+    path = str(tmp_path / "policy.pt")
+    manager.save_model(path)
+    restored = PolicyManager(config_path=test_config_path, model_path=path)
+    assert restored.policy.steps_done == 1
+    assert restored.policy.epsilon == manager.policy.epsilon
+
+
+def test_terminal_transition_never_bootstraps(monkeypatch):
+    import torch
+    from human_voice_ai.policy.rl_policy import RLPolicy
+    policy = RLPolicy(state_dim=6, action_dim=2, batch_size=1)
+    state = np.zeros(6, dtype=np.float32)
+    policy.store_transition(state, 0, 3.0, state, True)
+    original = torch.nn.MSELoss
+    targets = []
+    class CheckedLoss(original):
+        def forward(self, prediction, target):
+            assert prediction.shape == target.shape == (1,)
+            targets.append(target.detach().clone())
+            return super().forward(prediction, target)
+    monkeypatch.setattr(torch.nn, "MSELoss", CheckedLoss)
+    loss = policy.update()
+    assert np.isfinite(loss)
+    assert torch.equal(targets[0], torch.tensor([3.0]))

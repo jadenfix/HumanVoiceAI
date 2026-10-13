@@ -172,16 +172,16 @@ class RLPolicy:
         next_state_values = torch.zeros(self.batch_size, device=self.device)
         
         # Only compute values for non-terminal states
-        non_final_mask = torch.tensor([s is not None for s in batch.next_state], device=self.device, dtype=torch.bool)
+        non_final_mask = torch.tensor([s is not None and not done for s, done in zip(batch.next_state, batch.done)], device=self.device, dtype=torch.bool)
         if non_final_mask.any():
-            non_final_next_states = torch.FloatTensor([s for s in batch.next_state if s is not None]).to(self.device)
+            non_final_next_states = torch.FloatTensor(np.array([s for s, done in zip(batch.next_state, batch.done) if s is not None and not done])).to(self.device)
             next_state_values[non_final_mask] = self.target_net(non_final_next_states).max(1)[0].detach()
 
         # Compute the expected Q values
         expected_state_action_values = (next_state_values * self.gamma) + reward_batch
 
         # Compute loss
-        loss = nn.MSELoss()(state_action_values.squeeze(), expected_state_action_values)
+        loss = nn.MSELoss()(state_action_values.squeeze(1), expected_state_action_values)
 
         # Optimize the model
         self.optimizer.zero_grad()

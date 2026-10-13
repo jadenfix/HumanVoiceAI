@@ -35,6 +35,7 @@ class TestTtsEngine:
         """Create a test configuration for the TTS engine."""
         return TTSConfig(
             model_name="test_model",
+            allow_mock=True,
             vocoder_name=None,
             device="cpu",
             sample_rate=TEST_SAMPLE_RATE,
@@ -102,7 +103,7 @@ class TestTtsEngine:
                 "emotion_embedding.weight": tts_engine.emotion_embedding.weight
             },
         ):
-            new_tts = TtsEngine()
+            new_tts = TtsEngine(TTSConfig(allow_mock=True, device="cpu"))
             new_tts._load_weights(str(weights_path))
 
         # Verify the weights were loaded (just check the shape for the test)
@@ -129,3 +130,17 @@ class TestTtsEngine:
 
 if __name__ == "__main__":
     pytest.main(["-v", "test_tts_engine.py"])
+
+
+def test_real_backend_failure_never_returns_synthetic_speech():
+    with patch("human_voice_ai.tts.tts_engine._tts_provider", side_effect=ImportError("not installed")):
+        with pytest.raises(RuntimeError, match="Real TTS initialization failed"):
+            TtsEngine(TTSConfig(device="cpu"))
+
+
+def test_synthesis_failure_never_returns_silence_as_success():
+    with patch("human_voice_ai.tts.tts_engine._tts_provider", side_effect=ImportError("not installed")):
+        engine = TtsEngine(TTSConfig(allow_mock=True, device="cpu"))
+    with patch.object(engine.tts, "tts_to_file", side_effect=RuntimeError("backend failed")):
+        with pytest.raises(RuntimeError, match="no speech audio"):
+            engine.synthesize("test")

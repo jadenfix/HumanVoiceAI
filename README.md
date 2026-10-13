@@ -180,3 +180,7 @@ make test
 - Coqui TTS and HiFi-GAN teams
 - PyTorch and MPS team for Apple Silicon support
 # HumanVoiceAI
+
+## Speech backend readiness
+
+Real TTS requires the Coqui TTS dependency and configured pretrained weights. Initialization and synthesis failures now raise explicitly; they no longer masquerade as generated speech via synthetic tones or silence. `TTSConfig(allow_mock=True)` is an explicit synthetic audio test mode, useful for WAV/shape/plumbing checks and unsuitable for recording a real speech demo. The configured model name is honored.
