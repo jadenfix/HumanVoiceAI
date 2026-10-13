@@ -8,7 +8,8 @@ and verifies that the output files are created correctly.
 import os
 import tempfile
 import torch
-import torchaudio
+import soundfile as sf
+import numpy as np
 from pathlib import Path
 from human_voice_ai.tts.tts_engine import TtsEngine, TTSConfig
 
@@ -48,7 +49,11 @@ def test_tts_emotion_generation():
                 )
 
                 # Save the audio
-                torchaudio.save(output_path, audio, sample_rate)
+                sf.write(output_path, audio.T.cpu().numpy(), sample_rate)
+                recovered, recovered_rate = sf.read(output_path, dtype="float32", always_2d=True)
+                assert recovered_rate == sample_rate
+                assert recovered.shape == (audio.shape[1], audio.shape[0])
+                assert np.isfinite(recovered).all()
 
                 # Verify file was created and has content
                 assert (

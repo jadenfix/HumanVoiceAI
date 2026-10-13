@@ -246,7 +246,13 @@ class TtsEngine:
                 )
 
             # Load the generated audio
-            audio_tensor, sample_rate = torchaudio.load(temp_path)
+            # WAV decoding uses the already required SoundFile backend, independent
+            # of TorchAudio2.9's optional TorchCodec loader.
+            import soundfile as sf
+            samples, sample_rate = sf.read(temp_path, dtype="float32", always_2d=True)
+            if samples.size == 0 or sample_rate <= 0 or not np.isfinite(samples).all():
+                raise ValueError("TTS provider produced empty or non-finite WAV audio")
+            audio_tensor = torch.from_numpy(samples.T.copy())
 
             # Apply additional processing if needed
             if "energy" in emotion_params:
