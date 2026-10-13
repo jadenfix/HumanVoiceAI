@@ -14,12 +14,13 @@ from human_voice_ai.tts.tts_engine import TtsEngine, TTSConfig
 
 
 def test_tts_emotion_generation():
-    """Test TTS generation with different emotions."""
+    """Test explicitly synthetic audio/WAV plumbing, not speech quality."""
     # Create a temporary directory for output
     with tempfile.TemporaryDirectory() as temp_dir:
         # Initialize TTS engine with test config
         config = TTSConfig(
             model_name="tts_models/en/ljspeech/glow-tts",
+            allow_mock=True,
             device="cuda" if torch.cuda.is_available() else "cpu",
         )
         tts = TtsEngine(config=config)
