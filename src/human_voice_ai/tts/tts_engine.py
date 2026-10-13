@@ -93,6 +93,7 @@ class TtsEngine:
 
                 def __init__(self, *args, **kwargs):
                     self.model_name = kwargs.get("model_name", "mock_model")
+                    self.sample_rate = kwargs.get("sample_rate", 22050)
                     self.progress_bar = kwargs.get("progress_bar", False)
 
                 def tts_to_file(self, text, file_path, **kwargs):
@@ -107,7 +108,7 @@ class TtsEngine:
                     energy = kwargs.get("energy", 1.0)
 
                     # Generate a more interesting test tone
-                    sr = 22050
+                    sr = self.sample_rate
                     t = np.linspace(0, 2.0, int(2.0 * sr), endpoint=False)
 
                     # Base tone with some variation based on emotion
@@ -130,7 +131,7 @@ class TtsEngine:
                     sf.write(file_path, audio, sr)
                     return True
 
-            self.tts = MockTTS()
+            self.tts = MockTTS(sample_rate=self.config.sample_rate)
             self._emotion_to_idx = {
                 "happy": 0,
                 "sad": 1,
