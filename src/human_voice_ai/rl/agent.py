@@ -229,7 +229,7 @@ class PPOTrainer:
         # Calculate advantages and returns
         with torch.no_grad():
             _, values = self.policy(states)
-            next_values = torch.cat([values[1:], torch.zeros(1)])
+            next_values = torch.cat([values[1:], values.new_zeros(1)])
             next_values[dones.bool()] = 0
 
             deltas = rewards + self.gamma * next_values - values
@@ -237,10 +237,10 @@ class PPOTrainer:
             advantages[-1] = deltas[-1]
 
             for t in reversed(range(len(deltas) - 1)):
-                advantages[t] = deltas[t] + self.gamma * advantages[t + 1]
+                advantages[t] = deltas[t] + self.gamma * (1 - dones[t]) * advantages[t + 1]
 
             returns = advantages + values
-            advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-8)
+            advantages = (advantages - advantages.mean()) / (advantages.std(unbiased=False) + 1e-8)
 
         # PPO update
         for _ in range(4):  # Number of PPO epochs
@@ -281,9 +281,11 @@ class PPOTrainer:
             value_loss = F.mse_loss(values, returns)
 
             # Calculate explained variance
-            y_true = returns.numpy()
-            y_pred = values.numpy()
-            explained_var = 1 - np.var(y_true - y_pred) / np.var(y_true)
+            y_true = returns.cpu().numpy()
+            y_pred = values.cpu().numpy()
+            target_variance = np.var(y_true)
+            explained_var = (1 - np.var(y_true - y_pred) / target_variance
+                             if target_variance > 0 else 0.0)
 
         return {
             "loss": loss.item(),
