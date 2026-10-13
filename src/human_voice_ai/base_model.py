@@ -29,8 +29,7 @@ class BaseModel(nn.Module, ABC):
         super().__init__(*args, **kwargs)
         self.config = config
         self.device = self._setup_device()
-        self._build_model()
-        self.to(self.device)
+        # Concrete classes build after setting their own shape/configuration fields.
 
     @abstractmethod
     def _build_model(self) -> None:
@@ -55,13 +54,15 @@ class BaseModel(nn.Module, ABC):
         Returns:
             torch.device: The device to use for computation.
         """
-        if not torch.cuda.is_available() and not torch.backends.mps.is_available():
-            return torch.device("cpu")
-
-        if self.config.device == "auto":
-            device = torch.device("cuda" if torch.cuda.is_available() else "mps")
-        else:
-            device = torch.device(self.config.device)
+        requested = self.config.device
+        mps_available = hasattr(torch.backends, "mps") and torch.backends.mps.is_available()
+        if requested == "auto":
+            requested = "cuda" if torch.cuda.is_available() else ("mps" if mps_available else "cpu")
+        if requested == "cuda" and not torch.cuda.is_available():
+            raise ValueError("Configured CUDA device is unavailable")
+        if requested == "mps" and not mps_available:
+            raise ValueError("Configured MPS device is unavailable")
+        device = torch.device(requested)
 
         # Print device info
         if device.type == "cuda":
@@ -135,7 +136,7 @@ class BaseModel(nn.Module, ABC):
             raise FileNotFoundError(f"Checkpoint not found: {checkpoint_path}")
 
         # Load checkpoint
-        checkpoint = torch.load(checkpoint_path, map_location="cpu")
+        checkpoint = torch.load(checkpoint_path, map_location="cpu", weights_only=True)
 
         # Get config (either from checkpoint or provided)
         if config is None:

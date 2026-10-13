@@ -40,8 +40,8 @@ class PolicyManager:
 
         self.policy = EmotionPolicy(
             state_dim=state_dim,
-            num_actions=num_actions,
-            lr=self.config["training"]["lr"],
+            action_dim=num_actions,
+            lr=float(self.config["training"]["lr"]),
             gamma=self.config["training"]["gamma"],
             epsilon_start=self.config["exploration"]["epsilon_start"],
             epsilon_end=self.config["exploration"]["epsilon_end"],

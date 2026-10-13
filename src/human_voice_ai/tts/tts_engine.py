@@ -12,11 +12,15 @@ from typing import Dict, Optional, Tuple, Union
 
 import torch.nn as nn
 import torchaudio
-from TTS.api import TTS
 import numpy as np
-from TTS.api import TTS
 import torchaudio
 from dataclasses import dataclass
+
+
+def _tts_provider(**kwargs):
+    # Optional speech weights/dependency are loaded only for real synthesis.
+    from TTS.api import TTS
+    return TTS(**kwargs)
 
 
 @dataclass
@@ -28,6 +32,7 @@ class TTSConfig:
     device: str = "mps" if torch.backends.mps.is_available() else "cpu"
     sample_rate: int = 22050
     emotion_embedding_dim: int = 128
+    allow_mock: bool = False
 
 
 class TtsEngine:
@@ -51,8 +56,8 @@ class TtsEngine:
         try:
             print("Loading TTS model with emotion support...")
             # Using a model that supports emotion control
-            self.tts = TTS(
-                model_name="tts_models/en/ek1/tacotron2",
+            self.tts = _tts_provider(
+                model_name=self.config.model_name,
                 progress_bar=True,
                 gpu=torch.cuda.is_available(),
             )
@@ -76,14 +81,19 @@ class TtsEngine:
             }
 
         except Exception as e:
-            print(f"Warning: Could not load TTS model with emotion support: {e}")
-            print("Falling back to mock TTS for testing")
+            if not self.config.allow_mock:
+                raise RuntimeError(
+                    "Real TTS initialization failed. Install/configure Coqui TTS and model weights; "
+                    "allow_mock=True is only for explicitly labeled synthetic audio tests."
+                ) from e
+            print(f"Synthetic audio test mode: real TTS unavailable ({e})")
 
             class MockTTS:
                 is_mock = True  # Flag to identify this as a mock implementation
 
                 def __init__(self, *args, **kwargs):
                     self.model_name = kwargs.get("model_name", "mock_model")
+                    self.sample_rate = kwargs.get("sample_rate", 22050)
                     self.progress_bar = kwargs.get("progress_bar", False)
 
                 def tts_to_file(self, text, file_path, **kwargs):
@@ -98,7 +108,7 @@ class TtsEngine:
                     energy = kwargs.get("energy", 1.0)
 
                     # Generate a more interesting test tone
-                    sr = 22050
+                    sr = self.sample_rate
                     t = np.linspace(0, 2.0, int(2.0 * sr), endpoint=False)
 
                     # Base tone with some variation based on emotion
@@ -121,7 +131,7 @@ class TtsEngine:
                     sf.write(file_path, audio, sr)
                     return True
 
-            self.tts = MockTTS()
+            self.tts = MockTTS(sample_rate=self.config.sample_rate)
             self._emotion_to_idx = {
                 "happy": 0,
                 "sad": 1,
@@ -237,7 +247,13 @@ class TtsEngine:
                 )
 
             # Load the generated audio
-            audio_tensor, sample_rate = torchaudio.load(temp_path)
+            # WAV decoding uses the already required SoundFile backend, independent
+            # of TorchAudio2.9's optional TorchCodec loader.
+            import soundfile as sf
+            samples, sample_rate = sf.read(temp_path, dtype="float32", always_2d=True)
+            if samples.size == 0 or sample_rate <= 0 or not np.isfinite(samples).all():
+                raise ValueError("TTS provider produced empty or non-finite WAV audio")
+            audio_tensor = torch.from_numpy(samples.T.copy())
 
             # Apply additional processing if needed
             if "energy" in emotion_params:
@@ -254,8 +270,7 @@ class TtsEngine:
 
         except Exception as e:
             print(f"Error during TTS synthesis: {e}")
-            # Return silence on error
-            return torch.zeros((1, 16000)), 16000
+            raise RuntimeError("TTS synthesis failed; no speech audio was produced") from e
 
         finally:
             # Clean up the temporary file

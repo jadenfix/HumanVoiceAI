@@ -130,14 +130,18 @@ class RLPolicy:
         if training and random.random() < self.epsilon:
             return random.randrange(self.num_actions)
 
-        with torch.no_grad():
-            # Convert state to tensor and add batch dimension if needed
-            if not isinstance(state, torch.Tensor):
-                state = torch.FloatTensor(state).unsqueeze(0).to(self.device)
-
-            # Get Q-values and select action with highest Q-value
-            q_values = self.policy_net(state)
-            return q_values.argmax().item()
+        # Action scoring must not apply training-time dropout. Restore the
+        # caller's mode so subsequent optimizer updates still train normally.
+        was_training = self.policy_net.training
+        self.policy_net.eval()
+        try:
+            with torch.no_grad():
+                if not isinstance(state, torch.Tensor):
+                    state = torch.FloatTensor(state).unsqueeze(0).to(self.device)
+                q_values = self.policy_net(state)
+                return q_values.argmax().item()
+        finally:
+            self.policy_net.train(was_training)
 
     def store_transition(self, state, action, reward, next_state, done):
         """Store a transition in the replay buffer."""
@@ -172,16 +176,16 @@ class RLPolicy:
         next_state_values = torch.zeros(self.batch_size, device=self.device)
         
         # Only compute values for non-terminal states
-        non_final_mask = torch.tensor([s is not None for s in batch.next_state], device=self.device, dtype=torch.bool)
+        non_final_mask = torch.tensor([s is not None and not done for s, done in zip(batch.next_state, batch.done)], device=self.device, dtype=torch.bool)
         if non_final_mask.any():
-            non_final_next_states = torch.FloatTensor([s for s in batch.next_state if s is not None]).to(self.device)
+            non_final_next_states = torch.FloatTensor(np.array([s for s, done in zip(batch.next_state, batch.done) if s is not None and not done])).to(self.device)
             next_state_values[non_final_mask] = self.target_net(non_final_next_states).max(1)[0].detach()
 
         # Compute the expected Q values
         expected_state_action_values = (next_state_values * self.gamma) + reward_batch
 
         # Compute loss
-        loss = nn.MSELoss()(state_action_values.squeeze(), expected_state_action_values)
+        loss = nn.MSELoss()(state_action_values.squeeze(1), expected_state_action_values)
 
         # Optimize the model
         self.optimizer.zero_grad()

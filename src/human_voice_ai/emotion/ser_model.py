@@ -26,17 +26,22 @@ class SERModel(BaseModel):
             config: Configuration object containing model hyperparameters
         """
         super().__init__(config)
-        self.config = config.ser
+        self.ser_config = config.ser
+        if self.ser_config.model_type != "cnn_lstm":
+            raise ValueError("Only cnn_lstm SER model_type is implemented")
+        if config.audio.n_mels < 8 or self.ser_config.input_dim != config.audio.n_mels:
+            raise ValueError("SER input_dim must match audio.n_mels >=8")
 
         # Input feature dimensions
         self.n_mels = config.audio.n_mels
-        self.n_classes = self.config.num_classes
+        self.n_classes = self.ser_config.num_classes
 
         # Build model components
         self._build_model()
 
         # Initialize weights
         self._init_weights()
+        self.to(self.device)
 
     def _build_model(self) -> None:
         """Build the model architecture."""
@@ -67,38 +72,33 @@ class SERModel(BaseModel):
         # Bidirectional LSTM
         self.lstm = nn.LSTM(
             input_size=self.conv_output_dim,
-            hidden_size=self.config.hidden_dim,
-            num_layers=self.config.num_layers,
+            hidden_size=self.ser_config.hidden_dim,
+            num_layers=self.ser_config.num_layers,
             batch_first=True,
             bidirectional=True,
-            dropout=self.config.dropout if self.config.num_layers > 1 else 0.0,
+            dropout=self.ser_config.dropout if self.ser_config.num_layers > 1 else 0.0,
         )
 
         # Attention mechanism
         self.attention = nn.Sequential(
-            nn.Linear(self.config.hidden_dim * 2, 128),  # *2 for bidirectional
+            nn.Linear(self.ser_config.hidden_dim * 2, 128),  # *2 for bidirectional
             nn.Tanh(),
             nn.Linear(128, 1),
         )
 
         # Classifier
         self.classifier = nn.Sequential(
-            nn.Dropout(self.config.dropout),
-            nn.Linear(self.config.hidden_dim * 2, self.config.hidden_dim),
+            nn.Dropout(self.ser_config.dropout),
+            nn.Linear(self.ser_config.hidden_dim * 2, self.ser_config.hidden_dim),
             nn.ReLU(),
-            nn.Dropout(self.config.dropout),
-            nn.Linear(self.config.hidden_dim, self.n_classes),
+            nn.Dropout(self.ser_config.dropout),
+            nn.Linear(self.ser_config.hidden_dim, self.n_classes),
         )
 
     def _get_conv_output_dim(self) -> int:
         """Calculate the output dimension of the CNN feature extractor."""
-        # Create a dummy input to calculate the CNN output size
-        dummy_input = torch.zeros(
-            1, 1, self.n_mels, 100
-        )  # (batch, channels, n_mels, time)
-        with torch.no_grad():
-            output = self.conv_layers(dummy_input)
-        return output.size(1) * output.size(2)  # channels * height
+        # Three2x2 pools; no dummy forward that mutates BatchNorm statistics.
+        return 256 * (self.n_mels // 8)
 
     def _init_weights(self) -> None:
         """Initialize model weights."""
@@ -111,7 +111,7 @@ class SERModel(BaseModel):
                 nn.init.constant_(m.weight, 1)
                 nn.init.constant_(m.bias, 0)
 
-    def forward(self, x: torch.Tensor) -> Dict[str, torch.Tensor]:
+    def _encode(self, x: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
         """
         Forward pass of the SER model.
 
@@ -124,6 +124,10 @@ class SERModel(BaseModel):
                 - probs: Class probabilities (batch, n_classes)
                 - attention_weights: Attention weights (batch, time)
         """
+        if x.ndim != 4 or x.size(1) != 1 or x.size(2) != self.n_mels or x.size(3) < 8:
+            raise ValueError("Expected [batch,1,n_mels,time>=8] mel input")
+        if not torch.isfinite(x).all():
+            raise ValueError("SER input must be finite")
         batch_size = x.size(0)
 
         # CNN feature extraction
@@ -138,21 +142,27 @@ class SERModel(BaseModel):
         lstm_out, _ = self.lstm(x)  # (batch, time, hidden_dim * 2)
 
         # Attention mechanism
-        attention_weights = self.attention(lstm_out)  # (batch, time, 1)
-        attention_weights = F.softmax(attention_weights, dim=1)
+        if self.ser_config.use_attention:
+            attention_weights = F.softmax(self.attention(lstm_out), dim=1)
+        else:
+            attention_weights = torch.full_like(lstm_out[:, :, :1], 1 / lstm_out.size(1))
 
         # Apply attention weights
         context_vector = torch.sum(
             attention_weights * lstm_out, dim=1
         )  # (batch, hidden_dim * 2)
 
-        # Classifier
+        return context_vector, attention_weights.squeeze(-1)
+
+    def forward(self, x: torch.Tensor) -> Dict[str, torch.Tensor]:
+        context_vector, attention_weights = self._encode(x)
         logits = self.classifier(context_vector)  # (batch, n_classes)
 
         return {
             "logits": logits,
             "probs": F.softmax(logits, dim=1),
-            "attention_weights": attention_weights.squeeze(-1),  # (batch, time)
+            "attention_weights": attention_weights,
+            "context_vector": context_vector,
         }
 
     def get_input_shape(self) -> tuple:
@@ -217,16 +227,16 @@ class SERModelWithFeatures(SERModel):
             self.feature_processor = nn.Sequential(
                 nn.Linear(self.feature_dim, 64),
                 nn.ReLU(),
-                nn.Dropout(self.config.dropout),
+                nn.Dropout(self.ser_config.dropout),
             )
 
             # Update classifier to combine CNN-LSTM and handcrafted features
             self.classifier = nn.Sequential(
-                nn.Dropout(self.config.dropout),
-                nn.Linear(self.config.hidden_dim * 2 + 64, self.config.hidden_dim),
+                nn.Dropout(self.ser_config.dropout),
+                nn.Linear(self.ser_config.hidden_dim * 2 + 64, self.ser_config.hidden_dim),
                 nn.ReLU(),
-                nn.Dropout(self.config.dropout),
-                nn.Linear(self.config.hidden_dim, self.n_classes),
+                nn.Dropout(self.ser_config.dropout),
+                nn.Linear(self.ser_config.hidden_dim, self.n_classes),
             )
 
     def forward(
@@ -242,21 +252,17 @@ class SERModelWithFeatures(SERModel):
         Returns:
             Dictionary containing model outputs
         """
-        # Get base model outputs
-        outputs = super().forward(x)
+        context, attention = self._encode(x)
+        if self.feature_dim > 0:
+            if features is None or features.shape != (x.size(0), self.feature_dim):
+                raise ValueError("Configured handcrafted features require [batch,feature_dim] input")
+            if not torch.isfinite(features).all():
+                raise ValueError("Handcrafted features must be finite")
+            context = torch.cat([context, self.feature_processor(features)], dim=1)
+        logits = self.classifier(context)
+        return {"logits": logits, "probs": F.softmax(logits, dim=1),
+                "attention_weights": attention, "context_vector": context}
 
-        # Process handcrafted features if provided
-        if hasattr(self, "feature_processor") and features is not None:
-            processed_features = self.feature_processor(features)
-
-            # Combine CNN-LSTM features with handcrafted features
-            combined = torch.cat([outputs["context_vector"], processed_features], dim=1)
-
-            # Final classification
-            logits = self.classifier(combined)
-            outputs.update({"logits": logits, "probs": F.softmax(logits, dim=1)})
-
-        return outputs
 
 
 def create_ser_model(config: Config, feature_dim: int = 0) -> SERModel:
