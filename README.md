@@ -184,3 +184,14 @@ make test
 ## Speech backend readiness
 
 Real TTS requires the Coqui TTS dependency and configured pretrained weights. Initialization and synthesis failures now raise explicitly; they no longer masquerade as generated speech via synthetic tones or silence. `TTSConfig(allow_mock=True)` is an explicit synthetic audio test mode, useful for WAV/shape/plumbing checks and unsuitable for recording a real speech demo. The configured model name is honored.
+
+## Verified CPU SER computation
+
+```bash
+PYTHONPATH=src python -m human_voice_ai.ser_smoke --policy-config configs/rl_policy_config.yaml --output artifacts/ser-smoke
+PYTHONPATH=src python -m pytest -q tests/test_ser_workflow.py
+```
+
+This bounded fixture uses synthetic220Hz/440Hz tones and arbitrary class labels. The actual extractor yields mel/pitch/energy features; the packaged CNN-LSTM-attention SER consumes its mel bins, receives three Adam optimizer updates, saves a checkpoint with the complete configuration, restores it strictly and reproduces inference probabilities. A greedy policy action consumes those probabilities. It demonstrates changed parameters and correct plumbing, **not trained emotion accuracy or full live voice**. The receipt records losses, parameter change, shapes and scope.
+
+`human_voice_ai.utils.config` is now included in installed packages. `configs/ser_cpu_smoke.yaml` shows its nested YAML schema; `Config.from_yaml` validates it directly. Only `cnn_lstm` is implemented; mismatched mel dimensions or unsupported model types raise. Handcrafted-feature SER requires explicit finite feature vectors and is separately tested through backward/checkpoint restore. Models build once after dimensions are initialized; construction does not alter BatchNorm statistics. Existing policy dropout/terminal/PPO numerical fixes from support PR3 and launcher fixes from PR1 are preserved.

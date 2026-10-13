@@ -6,7 +6,8 @@ Main entry point for the Human Voice AI application.
 
 def main():
     """Run the Streamlit application."""
-    import streamlit.cli as stcli
+    import sys
+    from streamlit.web import cli as stcli
     from pathlib import Path
 
     # Get the absolute path to the app.py file
