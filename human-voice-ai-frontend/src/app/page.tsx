@@ -25,6 +25,7 @@ interface FeatureImportance {
 export default function VoiceAI() {
   const [isRecording, setIsRecording] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
+  const [processingError, setProcessingError] = useState<string | null>(null);
   const [currentEmotion, setCurrentEmotion] = useState<EmotionResult | null>(null);
   const [emotionHistory, setEmotionHistory] = useState<EmotionResult[]>([]);
   const [audioLevel, setAudioLevel] = useState(0);
@@ -43,30 +44,6 @@ export default function VoiceAI() {
     3: { label: 'Neutral', emoji: '😐', color: 'from-gray-500 to-gray-600', description: 'Calm, Balanced, Steady' },
     4: { label: 'Slightly Positive', emoji: '🙂', color: 'from-green-500 to-green-600', description: 'Content, Interested, Pleased' },
     5: { label: 'Very Positive', emoji: '😊', color: 'from-emerald-500 to-emerald-600', description: 'Happy, Excited, Joyful' }
-  };
-
-  // Generate feature importance based on emotion score
-  const generateFeatureImportance = (emotion: EmotionResult): FeatureImportance => {
-    const importance: FeatureImportance = {};
-    
-    if (emotion.score <= 2) { // Negative emotions
-      importance['Voice Energy (RMS)'] = 0.85 + Math.random() * 0.15;
-      importance['Speech Rate'] = 0.75 + Math.random() * 0.20;
-      importance['Pitch Variation'] = 0.70 + Math.random() * 0.25;
-      importance['Vocal Tension'] = 0.80 + Math.random() * 0.15;
-    } else if (emotion.score >= 4) { // Positive emotions
-      importance['Vocal Brightness'] = 0.80 + Math.random() * 0.20;
-      importance['Speech Rhythm'] = 0.75 + Math.random() * 0.20;
-      importance['Pitch Range'] = 0.85 + Math.random() * 0.15;
-      importance['Energy Consistency'] = 0.70 + Math.random() * 0.25;
-    } else { // Neutral
-      importance['Spectral Balance'] = 0.70 + Math.random() * 0.15;
-      importance['Stable Energy'] = 0.75 + Math.random() * 0.15;
-      importance['Consistent Pitch'] = 0.65 + Math.random() * 0.20;
-      importance['Steady Rhythm'] = 0.68 + Math.random() * 0.17;
-    }
-    
-    return importance;
   };
 
   const startRecording = async () => {
@@ -164,6 +141,7 @@ export default function VoiceAI() {
 
   const processAudio = async (audioBlob: Blob) => {
     setIsProcessing(true);
+    setProcessingError(null);
     
     try {
       const formData = new FormData();
@@ -178,7 +156,7 @@ export default function VoiceAI() {
       const result = await response.json();
       const processingTime = ((Date.now() - startTime) / 1000).toFixed(1);
       
-      if (result.success) {
+      if (response.ok && result.success) {
         const emotionResult: EmotionResult = {
           score: result.emotion.score,
           confidence: result.emotion.confidence,
@@ -189,19 +167,20 @@ export default function VoiceAI() {
         
         setCurrentEmotion(emotionResult);
         setEmotionHistory(prev => [...prev.slice(-9), emotionResult]);
-        setFeatureImportance(generateFeatureImportance(emotionResult));
+        setFeatureImportance({});
       } else {
         throw new Error(result.error || 'Processing failed');
       }
     } catch (error) {
       console.error('Error processing audio:', error);
-      alert('Audio processing failed. Please try again.');
+      setProcessingError(error instanceof Error ? error.message : 'Audio processing failed.');
     } finally {
       setIsProcessing(false);
     }
   };
 
   const clearHistory = () => {
+    setProcessingError(null);
     setEmotionHistory([]);
     setCurrentEmotion(null);
     setFeatureImportance({});
@@ -221,6 +200,14 @@ export default function VoiceAI() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-indigo-900 via-purple-900 to-pink-900">
+      <p className="mx-auto max-w-3xl px-6 pt-6 text-center text-sm text-amber-200">
+        Speech analysis is not connected. Recording will not produce an emotion prediction.
+      </p>
+      {processingError && (
+        <p role="alert" className="mx-auto max-w-3xl px-6 py-4 text-center text-red-300">
+          {processingError}
+        </p>
+      )}
       {/* Hero Section with animated blobs */}
       <div className="relative overflow-hidden" style={{ perspective: 1000 }}>
         <div className="absolute inset-0 bg-black/20"></div>
@@ -253,13 +240,13 @@ export default function VoiceAI() {
             </h1>
           </motion.div>
           <p className="text-xl text-gray-300 max-w-2xl mx-auto mb-4">
-            Advanced emotion detection using state-of-the-art machine learning models
+            Voice recording interface — speech emotion analysis is awaiting a connected model
           </p>
           {/* Navigation bar now contains Math & Architecture link */}
           {recordingCount > 0 && (
             <div className="inline-flex items-center bg-white/10 backdrop-blur-sm rounded-full px-4 py-2 text-gray-300">
               <FaHistory className="mr-2" />
-              {recordingCount} recording{recordingCount !== 1 ? 's' : ''} analyzed
+              {recordingCount} recording{recordingCount !== 1 ? 's' : ''}
             </div>
           )}
         </div>
