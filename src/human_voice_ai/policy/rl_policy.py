@@ -130,14 +130,18 @@ class RLPolicy:
         if training and random.random() < self.epsilon:
             return random.randrange(self.num_actions)
 
-        with torch.no_grad():
-            # Convert state to tensor and add batch dimension if needed
-            if not isinstance(state, torch.Tensor):
-                state = torch.FloatTensor(state).unsqueeze(0).to(self.device)
-
-            # Get Q-values and select action with highest Q-value
-            q_values = self.policy_net(state)
-            return q_values.argmax().item()
+        # Action scoring must not apply training-time dropout. Restore the
+        # caller's mode so subsequent optimizer updates still train normally.
+        was_training = self.policy_net.training
+        self.policy_net.eval()
+        try:
+            with torch.no_grad():
+                if not isinstance(state, torch.Tensor):
+                    state = torch.FloatTensor(state).unsqueeze(0).to(self.device)
+                q_values = self.policy_net(state)
+                return q_values.argmax().item()
+        finally:
+            self.policy_net.train(was_training)
 
     def store_transition(self, state, action, reward, next_state, done):
         """Store a transition in the replay buffer."""
