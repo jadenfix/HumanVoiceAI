@@ -184,3 +184,15 @@ make test
 ## Speech backend readiness
 
 Real TTS requires the Coqui TTS dependency and configured pretrained weights. Initialization and synthesis failures now raise explicitly; they no longer masquerade as generated speech via synthetic tones or silence. `TTSConfig(allow_mock=True)` is an explicit synthetic audio test mode, useful for WAV/shape/plumbing checks and unsuitable for recording a real speech demo. The configured model name is honored.
+
+## Frontend speech availability
+
+The Next.js recording interface is not connected to a speech emotion inference
+service. Its audio endpoint returns HTTP 503 for a valid upload, with no emotion
+label, confidence, feature importance, or fabricated processing time. Streamlit
+health alone does not establish that inference exists. No uploaded audio is
+written to a temporary file by this endpoint. Real speech inference and frontend
+hosted deployment remain unverified.
+
+Run the endpoint regressions after installing frontend dependencies:
+`cd human-voice-ai-frontend && npm ci && npm test`.
